@@ -56,8 +56,7 @@ export default async function handler(request, response) {
           ${modality || "quincenal"},
           ${variable !== false}
         )
-        ON CONFLICT (id)
-        DO UPDATE SET
+        ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           goal = EXCLUDED.goal,
           normal = EXCLUDED.normal,
