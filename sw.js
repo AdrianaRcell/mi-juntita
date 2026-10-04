@@ -1,10 +1,12 @@
-const CACHE_NAME = "mi-juntita-v1";
+const CACHE_NAME = "mi-juntita-v2";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./share-guard.js",
+  "./enhancements.js",
   "./manifest.webmanifest",
   "./icon.svg"
 ];
@@ -33,43 +35,32 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // Nunca interceptar APIs.
   if (url.pathname.startsWith("/api/")) {
     return;
   }
 
-  // Nunca interceptar archivos externos.
   if (url.origin !== self.location.origin) {
     return;
   }
 
-  // Al navegar: intenta internet y usa la copia local si no hay conexión.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-
           caches.open(CACHE_NAME).then((cache) => {
             cache.put("./index.html", copy);
           });
-
           return response;
         })
-        .catch(() => {
-          return caches.match("./index.html");
-        })
+        .catch(() => caches.match("./index.html"))
     );
-
     return;
   }
 
-  // Archivos de la app: primero caché.
   event.respondWith(
     caches.match(request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
+      if (cached) return cached;
 
       return fetch(request).then((response) => {
         if (!response || response.status !== 200) {
@@ -77,11 +68,7 @@ self.addEventListener("fetch", (event) => {
         }
 
         const copy = response.clone();
-
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, copy);
-        });
-
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         return response;
       });
     })
