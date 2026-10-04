@@ -2,7 +2,10 @@
   "use strict";
 
   const params = new URLSearchParams(location.search);
-  const enabled = params.get("test") === "1" || params.get("test") === "true";
+  const hash = location.hash.replace(/^#/, "");
+  const hashParams = new URLSearchParams(hash);
+  const testValue = params.get("test") || hashParams.get("test");
+  const enabled = testValue === "1" || testValue === "true";
 
   if (!enabled) return;
 
@@ -10,7 +13,7 @@
   document.documentElement.classList.add("mj-test-mode");
 
   const REAL_KEY = "miJuntita.v2";
-  const TEST_KEY = "miJuntita.test.v1";
+  const TEST_KEY = "miJuntita.test.v2";
 
   const originalGetItem = Storage.prototype.getItem;
   const originalSetItem = Storage.prototype.setItem;
@@ -235,11 +238,29 @@
     }
 
     if (url.pathname === "/api/upload-receipt" && method === "POST") {
+      let localUrl = dummyReceipt();
+
+      try {
+        const body = init?.body;
+        const file = body instanceof FormData ? body.get("file") : null;
+
+        if (file && typeof FileReader !== "undefined") {
+          localUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || dummyReceipt()));
+            reader.onerror = () => resolve(dummyReceipt());
+            reader.readAsDataURL(file);
+          });
+        }
+      } catch {
+        localUrl = dummyReceipt();
+      }
+
       return response({
         ok: true,
-        url: dummyReceipt(),
-        pathname: "test/comprobante.svg",
-        contentType: "image/svg+xml"
+        url: localUrl,
+        pathname: "test/comprobante-local",
+        contentType: "local"
       });
     }
 
