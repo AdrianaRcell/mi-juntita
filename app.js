@@ -42,6 +42,168 @@
 
 
   // ============================================================
+  // CARGA INICIAL — NO BLOQUEAR LA APP
+  // ============================================================
+
+  function createLoadingScreen(){
+
+    if(document.querySelector("#miJuntitaLoader")){
+      return;
+    }
+
+    const loader =
+      document.createElement("div");
+
+    loader.id =
+      "miJuntitaLoader";
+
+    loader.innerHTML = `
+
+      <div class="mj-loader-content">
+
+        <div class="mj-loader-flower">
+          🌸
+        </div>
+
+        <div class="mj-loader-name">
+          Mi Juntita
+        </div>
+
+        <div class="mj-loader-text">
+          preparando tus datos…
+        </div>
+
+      </div>
+    `;
+
+    const style =
+      document.createElement("style");
+
+    style.id =
+      "miJuntitaLoaderStyle";
+
+    style.textContent = `
+
+      #miJuntitaLoader{
+        position:fixed;
+        inset:0;
+        z-index:99999;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background:rgba(255,250,252,.97);
+        opacity:1;
+        transition:opacity .28s ease;
+        pointer-events:none;
+      }
+
+      html.dark #miJuntitaLoader{
+        background:rgba(25,20,25,.97);
+      }
+
+      #miJuntitaLoader.mj-loader-hide{
+        opacity:0;
+      }
+
+      .mj-loader-content{
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:7px;
+        text-align:center;
+      }
+
+      .mj-loader-flower{
+        font-size:42px;
+        line-height:1;
+        animation:
+          mjFlowerFloat 1s ease-in-out infinite;
+      }
+
+      .mj-loader-name{
+        font-size:18px;
+        font-weight:700;
+        letter-spacing:.2px;
+        color:#7f6075;
+      }
+
+      .mj-loader-text{
+        font-size:12px;
+        color:#9b8795;
+      }
+
+      @keyframes mjFlowerFloat{
+        0%,100%{
+          transform:translateY(0) rotate(-3deg) scale(1);
+        }
+        50%{
+          transform:translateY(-5px) rotate(3deg) scale(1.05);
+        }
+      }
+
+      @media (prefers-reduced-motion:reduce){
+        .mj-loader-flower{
+          animation:none;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(loader);
+  }
+
+
+  function hideLoadingScreen(){
+
+    const loader =
+      $("#miJuntitaLoader");
+
+    if(!loader) return;
+
+    loader.classList.add(
+      "mj-loader-hide"
+    );
+
+    setTimeout(() => {
+
+      loader.remove();
+
+      const style =
+        $("#miJuntitaLoaderStyle");
+
+      style?.remove();
+
+    },350);
+  }
+
+
+  // Mostrar la flor solamente si realmente
+  // hay una pequeña espera.
+  function prepareLoadingScreen(){
+
+    createLoadingScreen();
+
+    const loader =
+      $("#miJuntitaLoader");
+
+    if(!loader) return;
+
+    setTimeout(() => {
+
+      if(
+        !document.body.contains(loader)
+      ){
+        return;
+      }
+
+      hideLoadingScreen();
+
+    },1500);
+  }
+
+
+  // ============================================================
   // ESTADO INICIAL
   // ============================================================
 
@@ -530,7 +692,10 @@
     }
 
 
-    if(!file.type || !file.type.startsWith("image/")){
+    if(
+      !file.type ||
+      !file.type.startsWith("image/")
+    ){
 
       throw new Error(
         "El comprobante debe ser una imagen."
@@ -538,7 +703,10 @@
     }
 
 
-    if(file.size > 8 * 1024 * 1024){
+    if(
+      file.size >
+      8 * 1024 * 1024
+    ){
 
       throw new Error(
         "El comprobante no puede superar los 8 MB."
@@ -699,7 +867,7 @@
 
       if(cloudJuntas === null){
 
-        return;
+        return false;
       }
 
 
@@ -731,7 +899,7 @@
 
       if(cloudJuntas === null){
 
-        return;
+        return false;
       }
 
 
@@ -947,12 +1115,16 @@
         "Mi Juntita: juntas sincronizadas con Neon."
       );
 
+      return true;
+
     }catch(error){
 
       console.error(
         "Error sincronizando juntas con Neon:",
         error
       );
+
+      return false;
     }
   }
 
@@ -971,7 +1143,7 @@
 
       if(cloudKelly === null){
 
-        return;
+        return false;
       }
 
 
@@ -989,7 +1161,7 @@
 
         save();
 
-        return;
+        return false;
       }
 
 
@@ -1133,12 +1305,16 @@
         "Mi Juntita: Kelly sincronizada con Neon."
       );
 
+      return true;
+
     }catch(error){
 
       console.error(
         "Error sincronizando Kelly con Neon:",
         error
       );
+
+      return false;
     }
   }
 
@@ -1277,28 +1453,37 @@
 
   function save(){
 
-    localStorage.setItem(
-      KEY,
-      JSON.stringify(state)
-    );
+    try{
+
+      localStorage.setItem(
+        KEY,
+        JSON.stringify(state)
+      );
+
+    }catch(error){
+
+      console.error(
+        "Error guardando datos locales:",
+        error
+      );
+    }
   }
 
 
   // ============================================================
-  // INICIO
+  // INICIO — RÁPIDO
   // ============================================================
 
   async function init(){
 
+    /*
+      IMPORTANTE:
+
+      Primero mostramos la app con los datos locales.
+      Neon NO bloquea el primer render.
+    */
+
     applyTheme();
-
-    await ensureDefaultJuntaCloud();
-
-    await syncCloudData();
-
-    await ensureKellyCloud();
-
-    await syncKellyCloud();
 
     render();
 
@@ -1307,6 +1492,61 @@
     rotatePhrase(false);
 
     maybeKellyReminder();
+
+
+    /*
+      La pantalla de carga solamente acompaña
+      el arranque. Nunca se espera a Neon
+      para mostrar la aplicación.
+    */
+
+    prepareLoadingScreen();
+
+
+    /*
+      La nube trabaja en segundo plano.
+    */
+
+    setTimeout(
+      async () => {
+
+        try{
+
+          await ensureDefaultJuntaCloud();
+
+          await syncCloudData();
+
+          await ensureKellyCloud();
+
+          await syncKellyCloud();
+
+          /*
+            Cuando la nube termina,
+            actualizamos la interfaz
+            con los datos más recientes.
+          */
+
+          render();
+
+          console.log(
+            "Mi Juntita: sincronización inicial completada."
+          );
+
+        }catch(error){
+
+          console.error(
+            "Error en sincronización inicial:",
+            error
+          );
+
+        }finally{
+
+          hideLoadingScreen();
+        }
+
+      },
+      0
+    );
   }
 
 
@@ -1316,47 +1556,47 @@
 
   function bindStatic(){
 
-    $("#themeBtn").addEventListener(
+    $("#themeBtn")?.addEventListener(
       "click",
       toggleTheme
     );
 
-    $("#notifyBtn").addEventListener(
+    $("#notifyBtn")?.addEventListener(
       "click",
       showNotifications
     );
 
-    $("#shareBtn").addEventListener(
+    $("#shareBtn")?.addEventListener(
       "click",
       openShareMenu
     );
 
-    $("#newJuntaBtn").addEventListener(
+    $("#newJuntaBtn")?.addEventListener(
       "click",
       openNewJunta
     );
 
-    $("#kellyBtn").addEventListener(
+    $("#kellyBtn")?.addEventListener(
       "click",
       openKellyPayment
     );
 
-    $("#gastoBtn").addEventListener(
+    $("#gastoBtn")?.addEventListener(
       "click",
       openExpense
     );
 
-    $("#settingsBtn").addEventListener(
+    $("#settingsBtn")?.addEventListener(
       "click",
       openSettings
     );
 
-    $("#modalClose").addEventListener(
+    $("#modalClose")?.addEventListener(
       "click",
       closeModal
     );
 
-    $("#modalBackdrop").addEventListener(
+    $("#modalBackdrop")?.addEventListener(
       "click",
       e => {
 
@@ -1405,10 +1645,17 @@
       );
 
 
-    $("#themeBtn").textContent =
-      state.theme === "dark"
-        ? "☀"
-        : "☾";
+    const themeBtn =
+      $("#themeBtn");
+
+
+    if(themeBtn){
+
+      themeBtn.textContent =
+        state.theme === "dark"
+          ? "☀"
+          : "☾";
+    }
   }
 
 
@@ -1505,23 +1752,30 @@
     }
 
 
-    $("#decor").innerHTML = `
+    const decor =
+      $("#decor");
 
-      <span
-        class="decor-item"
-        style="left:8%;top:22%;font-size:20px"
-      >✦</span>
 
-      <span
-        class="decor-item"
-        style="left:88%;top:34%;font-size:18px;animation-delay:1s"
-      >🌸</span>
+    if(decor){
 
-      <span
-        class="decor-item"
-        style="left:74%;top:78%;font-size:17px;animation-delay:2s"
-      >🍃</span>
-    `;
+      decor.innerHTML = `
+
+        <span
+          class="decor-item"
+          style="left:8%;top:22%;font-size:20px"
+        >✦</span>
+
+        <span
+          class="decor-item"
+          style="left:88%;top:34%;font-size:18px;animation-delay:1s"
+        >🌸</span>
+
+        <span
+          class="decor-item"
+          style="left:74%;top:78%;font-size:17px;animation-delay:2s"
+        >🍃</span>
+      `;
+    }
   }
 
 
@@ -1531,7 +1785,13 @@
 
   function renderJuntas(){
 
-    $("#juntasGrid").innerHTML =
+    const grid =
+      $("#juntasGrid");
+
+    if(!grid) return;
+
+
+    grid.innerHTML =
       state.juntas
         .map((j, idx) => {
 
@@ -1801,6 +2061,12 @@
 
   function renderExpenses(){
 
+    const panel =
+      $("#expensesPanel");
+
+    if(!panel) return;
+
+
     const total =
       state.expenses.reduce(
         (s,e) =>
@@ -1812,7 +2078,7 @@
       );
 
 
-    $("#expensesPanel").innerHTML = `
+    panel.innerHTML = `
 
       <div class="panel-head">
 
@@ -1901,7 +2167,13 @@
 
   function renderTasks(){
 
-    $("#tasksPanel").innerHTML = `
+    const panel =
+      $("#tasksPanel");
+
+    if(!panel) return;
+
+
+    panel.innerHTML = `
 
       <div class="panel-head">
 
@@ -1968,7 +2240,7 @@
 
 
     $("#addTaskBtn")
-      .addEventListener(
+      ?.addEventListener(
         "click",
         addTask
       );
@@ -2384,10 +2656,6 @@
     }
 
 
-    /*
-      1. SUBIR COMPROBANTE A VERCEL BLOB
-    */
-
     let receiptUrl = "";
 
 
@@ -2445,10 +2713,6 @@
       receiptData:""
     };
 
-
-    /*
-      2. GUARDAR PAGO EN NEON
-    */
 
     const savedPayment =
       await apiCreateJuntaPayment(
@@ -2671,6 +2935,8 @@
 
     const layer =
       $("#celebrationLayer");
+
+    if(!layer) return;
 
 
     const set =
@@ -2951,10 +3217,6 @@
     }
 
 
-    /*
-      1. SUBIR COMPROBANTE A VERCEL BLOB
-    */
-
     let receiptUrl = "";
 
 
@@ -3009,10 +3271,6 @@
       receiptData:""
     };
 
-
-    /*
-      2. GUARDAR PAGO EN NEON
-    */
 
     const savedPayment =
       await apiCreateKellyPayment(
@@ -4025,6 +4283,12 @@
       );
 
 
+    if(!input){
+
+      return;
+    }
+
+
     try{
 
       await navigator.clipboard
@@ -4171,15 +4435,20 @@
 
 
     $("#notifyBtn")
-      .classList
+      ?.classList
       .remove(
         "has-notif"
       );
 
 
-    $("#notifDot")
-      .style.display =
-      "none";
+    const notifDot =
+      $("#notifDot");
+
+    if(notifDot){
+
+      notifDot.style.display =
+        "none";
+    }
   }
 
 
@@ -4227,7 +4496,7 @@
       setTimeout(() => {
 
         $("#notifyBtn")
-          .classList
+          ?.classList
           .add(
             "has-notif"
           );
@@ -4635,6 +4904,13 @@
 
     const wrap =
       $("#toastWrap");
+
+    if(!wrap){
+
+      console.log(msg);
+
+      return;
+    }
 
 
     const el =
