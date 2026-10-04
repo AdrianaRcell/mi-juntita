@@ -2,73 +2,328 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f7eef8">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Mi Juntita">
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css">
+
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover"
+  >
+
+  <meta
+    name="theme-color"
+    content="#f7eef8"
+  >
+
+  <meta
+    name="description"
+    content="Mi Juntita: tus ahorros, deudas, pagos y comprobantes en un solo lugar."
+  >
+
+  <meta
+    name="apple-mobile-web-app-capable"
+    content="yes"
+  >
+
+  <meta
+    name="apple-mobile-web-app-status-bar-style"
+    content="default"
+  >
+
+  <meta
+    name="apple-mobile-web-app-title"
+    content="Mi Juntita"
+  >
+
+  <link
+    rel="manifest"
+    href="manifest.webmanifest"
+  >
+
+  <link
+    rel="icon"
+    href="icon.svg"
+    type="image/svg+xml"
+  >
+
+  <link
+    rel="apple-touch-icon"
+    href="icon.svg"
+  >
+
+  <link
+    rel="stylesheet"
+    href="styles.css"
+  >
+
   <title>Mi Juntita</title>
 </head>
+
 <body>
-  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-  <div id="decor" aria-hidden="true"></div>
+
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <div
+    id="decor"
+    aria-hidden="true"
+  ></div>
+
 
   <header class="topbar">
+
     <div class="brand">
-      <div class="brand-mark">✿</div>
-      <div><strong>Junta</strong><span id="savingPhrase">Ahorrar hoy, respirar mañana ♡</span></div>
+
+      <div class="brand-mark">
+        ✿
+      </div>
+
+      <div>
+        <strong>Junta</strong>
+
+        <span id="savingPhrase">
+          Ahorrar hoy, respirar mañana ♡
+        </span>
+      </div>
+
     </div>
+
+
     <div class="top-actions">
-      <button class="icon-btn" id="themeBtn" title="Cambiar tema">☾</button>
-      <button class="icon-btn bell-btn" id="notifyBtn" title="Notificaciones">♧<i id="notifDot"></i></button>
-      <button class="icon-btn share-main" id="shareBtn" title="Compartir">↗</button>
+
+      <button
+        class="icon-btn"
+        id="themeBtn"
+        title="Cambiar tema"
+        type="button"
+      >
+        ☾
+      </button>
+
+
+      <button
+        class="icon-btn bell-btn"
+        id="notifyBtn"
+        title="Notificaciones"
+        type="button"
+      >
+        ♧
+        <i id="notifDot"></i>
+      </button>
+
+
+      <button
+        class="icon-btn share-main"
+        id="shareBtn"
+        title="Compartir"
+        type="button"
+      >
+        ↗
+      </button>
+
     </div>
+
   </header>
 
+
   <main class="shell">
+
     <section class="welcome stagger">
+
       <div>
-        <p class="eyebrow">TU DINERITO, EN ORDEN</p>
-        <h1>Hola ♡</h1>
-        <p class="muted">Tus juntitas y pendientes, sin complicarte.</p>
+
+        <p class="eyebrow">
+          TU DINERITO, EN ORDEN
+        </p>
+
+        <h1>
+          Hola ♡
+        </h1>
+
+        <p class="muted">
+          Tus juntitas y pendientes, sin complicarte.
+        </p>
+
       </div>
-      <button class="soft-btn settings-btn" id="settingsBtn">⚙️ Configuración</button>
+
+
+      <button
+        class="soft-btn settings-btn"
+        id="settingsBtn"
+        type="button"
+      >
+        ⚙️ Configuración
+      </button>
+
     </section>
 
-    <section id="juntasGrid" class="cards-grid"></section>
 
-    <section class="quick-grid stagger">
-      <button class="action-card junta-action" id="newJuntaBtn">
-        <span class="action-icon">🌸</span><span><b>Nueva Junta</b><small>Crear una meta</small></span><em>＋</em>
+    <section
+      id="juntasGrid"
+      class="cards-grid"
+    ></section>
+
+
+    <section
+      class="quick-grid stagger"
+    >
+
+      <button
+        class="action-card junta-action"
+        id="newJuntaBtn"
+        type="button"
+      >
+
+        <span class="action-icon">
+          🌸
+        </span>
+
+        <span>
+          <b>Nueva Junta</b>
+          <small>Crear una meta</small>
+        </span>
+
+        <em>
+          ＋
+        </em>
+
       </button>
-      <button class="action-card kelly-action" id="kellyBtn">
-        <span class="action-icon">💗</span><span><b>Registrar Kelly</b><small>Agregar un pago</small></span><em>＋</em>
+
+
+      <button
+        class="action-card kelly-action"
+        id="kellyBtn"
+        type="button"
+      >
+
+        <span class="action-icon">
+          💗
+        </span>
+
+        <span>
+          <b>Registrar Kelly</b>
+          <small>Agregar un pago</small>
+        </span>
+
+        <em>
+          ＋
+        </em>
+
       </button>
-      <button class="action-card gasto-action" id="gastoBtn">
-        <span class="action-icon">🪙</span><span><b>Gasto rápido</b><small>Sin comprobante</small></span><em>＋</em>
+
+
+      <button
+        class="action-card gasto-action"
+        id="gastoBtn"
+        type="button"
+      >
+
+        <span class="action-icon">
+          🪙
+        </span>
+
+        <span>
+          <b>Gasto rápido</b>
+          <small>Sin comprobante</small>
+        </span>
+
+        <em>
+          ＋
+        </em>
+
       </button>
+
     </section>
+
 
     <section class="lower-grid">
-      <article class="panel stagger" id="expensesPanel"></article>
-      <article class="panel stagger" id="tasksPanel"></article>
+
+      <article
+        class="panel stagger"
+        id="expensesPanel"
+      ></article>
+
+
+      <article
+        class="panel stagger"
+        id="tasksPanel"
+      ></article>
+
     </section>
+
   </main>
 
-  <div class="celebration-layer" id="celebrationLayer" aria-hidden="true"></div>
-  <div class="toast-wrap" id="toastWrap"></div>
 
-  <!-- Generic modal -->
-  <div class="modal-backdrop" id="modalBackdrop" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-      <button class="modal-close" id="modalClose">×</button>
+  <!-- Capa para las celebraciones y animaciones -->
+  <div
+    class="celebration-layer"
+    id="celebrationLayer"
+    aria-hidden="true"
+  ></div>
+
+
+  <!-- Mensajes -->
+  <div
+    class="toast-wrap"
+    id="toastWrap"
+  ></div>
+
+
+  <!-- Modal principal -->
+  <div
+    class="modal-backdrop"
+    id="modalBackdrop"
+    hidden
+  >
+
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalTitle"
+    >
+
+      <button
+        class="modal-close"
+        id="modalClose"
+        type="button"
+      >
+        ×
+      </button>
+
       <div id="modalContent"></div>
+
     </div>
+
   </div>
 
+
+  <!-- Aplicación principal -->
   <script src="app.js"></script>
+
+
+  <!-- Registro de la PWA -->
+  <script>
+    if ("serviceWorker" in navigator) {
+
+      window.addEventListener("load", () => {
+
+        navigator.serviceWorker
+          .register("./sw.js", {
+            scope: "./"
+          })
+          .then(() => {
+            console.log("Mi Juntita: PWA activada");
+          })
+          .catch((error) => {
+            console.warn(
+              "Mi Juntita: no se pudo activar la PWA.",
+              error
+            );
+          });
+
+      });
+
+    }
+  </script>
+
 </body>
 </html>
