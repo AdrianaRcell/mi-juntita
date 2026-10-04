@@ -1536,26 +1536,11 @@
         }
 
         if (ctx.type === "kelly") {
-  if (state?.kelly) {
-    // Usar la información REAL que acaba de devolver Neon.
-    if (Array.isArray(data?.kelly?.payments)) {
-      state.kelly.payments = data.kelly.payments.map(payment => ({
-        id: payment.id,
-        amount: Number(payment.amount || 0),
-        date: payment.date || "",
-        method: payment.method || "",
-        note: payment.note || "",
-        receiptUrl: payment.receipt_url || ""
-      }));
-    } else {
-      state.kelly.payments = [];
-    }
-
-    state.kelly.original = Number(
-      data?.kelly?.original ?? state.kelly.original ?? 2800
-    );
-  }
-}
+          if (state?.kelly) {
+            state.kelly.payments = Array.isArray(state.kelly.payments)
+              ? state.kelly.payments.filter(item => String(item.id) !== String(paymentId))
+              : [];
+          }
         } else {
           const junta = (state?.juntas || []).find(j => String(j.id) === String(ctx.parentId));
           if (junta) {
