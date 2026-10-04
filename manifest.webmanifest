@@ -1,0 +1,18 @@
+{
+  "name": "Mi Juntita",
+  "short_name": "Juntita",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fbf4fa",
+  "theme_color": "#f7eef8",
+  "lang": "es",
+  "description": "Mi Juntita, una aplicación para organizar y administrar tus juntas.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
