@@ -146,7 +146,7 @@
 
 
   // ============================================================
-  // CREAR JUNTA EN NEON
+  // CREAR / ACTUALIZAR JUNTA EN NEON
   // ============================================================
 
   async function apiCreateJunta(junta){
@@ -191,7 +191,7 @@
 
         throw new Error(
           data.error ||
-          "No se pudo crear la junta"
+          "No se pudo guardar la junta"
         );
       }
 
@@ -201,7 +201,7 @@
     }catch(error){
 
       console.error(
-        "Error creando junta:",
+        "Error guardando junta:",
         error
       );
 
@@ -350,9 +350,15 @@
 
       // ========================================================
       // MIGRACIÓN ÚNICA
-      // Elimina el antiguo aporte inicial
+      //
+      // Elimina únicamente el antiguo aporte inicial
       // de S/300 que no tenía comprobante.
+      //
+      // No toca ningún otro pago.
       // ========================================================
+
+      let migrated = false;
+
 
       if(
         !loaded.migrations?.initial300Removed
@@ -370,15 +376,16 @@
                 ...j,
 
                 payments:
-                  (j.payments || [])
-                    .filter(
-                      p =>
-                        !(
-                          Number(p.amount) === 300 &&
-                          p.note === "Aporte inicial" &&
-                          !p.receiptData
-                        )
-                    )
+                  Array.isArray(j.payments)
+                    ? j.payments.filter(
+                        p =>
+                          !(
+                            Number(p.amount) === 300 &&
+                            p.note === "Aporte inicial" &&
+                            !p.receiptData
+                          )
+                      )
+                    : []
               };
             }
 
@@ -393,6 +400,12 @@
           initial300Removed:true
         };
 
+
+        migrated = true;
+      }
+
+
+      if(migrated){
 
         localStorage.setItem(
           KEY,
@@ -1573,12 +1586,36 @@
           .trim(),
 
       receiptData:
-        data
+        data,
+
+      receiptUrl:""
     };
 
 
     // ==========================================================
-    // PRIMERO → NEON
+    // PASO 1
+    // Aseguramos que la junta exista en Neon.
+    //
+    // Esto es especialmente importante para junta_default,
+    // porque la junta original nació primero en localStorage.
+    //
+    // api/juntas.js usa ON CONFLICT, así que si ya existe,
+    // simplemente la actualiza y no crea duplicados.
+    // ==========================================================
+
+    const cloudJunta =
+      await apiCreateJunta(j);
+
+
+    if(!cloudJunta){
+
+      return;
+    }
+
+
+    // ==========================================================
+    // PASO 2
+    // Guardamos primero el aporte en Neon.
     // ==========================================================
 
     const savedPayment =
@@ -1594,7 +1631,8 @@
 
 
     // ==========================================================
-    // SEGUNDO → LOCAL
+    // PASO 3
+    // Si Neon confirmó el pago, recién lo guardamos localmente.
     // ==========================================================
 
     const before =
@@ -1612,9 +1650,29 @@
       before + amount;
 
 
-    j.payments.push(
-      payment
-    );
+    j.payments.push({
+
+      id:
+        payment.id,
+
+      amount:
+        payment.amount,
+
+      date:
+        payment.date,
+
+      method:
+        payment.method,
+
+      note:
+        payment.note,
+
+      receiptData:
+        payment.receiptData,
+
+      receiptUrl:
+        ""
+    });
 
 
     save();
