@@ -95,13 +95,15 @@
         }
       ],
 
-      lastKellyReminder:null
+      lastKellyReminder:null,
+
+      migrations:{}
     };
   }
 
 
   // ============================================================
-  // ESTADO + API
+  // ESTADO
   // ============================================================
 
   let state = load();
@@ -110,7 +112,7 @@
 
 
   // ============================================================
-  // OBTENER JUNTAS DESDE NEON
+  // API — OBTENER JUNTAS
   // ============================================================
 
   async function apiGetJuntas(){
@@ -146,7 +148,7 @@
 
 
   // ============================================================
-  // CREAR / ACTUALIZAR JUNTA EN NEON
+  // API — CREAR / ACTUALIZAR JUNTA
   // ============================================================
 
   async function apiCreateJunta(junta){
@@ -215,7 +217,7 @@
 
 
   // ============================================================
-  // CREAR APORTE DE JUNTA EN NEON
+  // API — CREAR APORTE DE JUNTA
   // ============================================================
 
   async function apiCreateJuntaPayment(
@@ -294,6 +296,60 @@
 
 
   // ============================================================
+  // ASEGURAR JUNTA PRINCIPAL EN NEON
+  // ============================================================
+
+  async function ensureDefaultJuntaCloud(){
+
+    const junta =
+      state.juntas.find(
+        j =>
+          j.id === "junta_default"
+      );
+
+
+    if(!junta){
+
+      return true;
+    }
+
+
+    if(
+      state.migrations?.defaultJuntaCloud
+    ){
+
+      return true;
+    }
+
+
+    const saved =
+      await apiCreateJunta(
+        junta
+      );
+
+
+    if(!saved){
+
+      return false;
+    }
+
+
+    state.migrations = {
+
+      ...(state.migrations || {}),
+
+      defaultJuntaCloud:true
+    };
+
+
+    save();
+
+
+    return true;
+  }
+
+
+  // ============================================================
   // LOCAL STORAGE
   // ============================================================
 
@@ -344,24 +400,27 @@
         tasks:
           Array.isArray(parsed.tasks)
             ? parsed.tasks
-            : fresh.tasks
+            : fresh.tasks,
+
+        migrations:{
+          ...(fresh.migrations || {}),
+          ...(parsed.migrations || {})
+        }
       };
 
 
       // ========================================================
       // MIGRACIÓN ÚNICA
-      //
-      // Elimina únicamente el antiguo aporte inicial
-      // de S/300 que no tenía comprobante.
-      //
-      // No toca ningún otro pago.
+      // Elimina el antiguo aporte inicial de S/300
+      // que no tenía comprobante.
       // ========================================================
 
       let migrated = false;
 
 
       if(
-        !loaded.migrations?.initial300Removed
+        !loaded.migrations
+          .initial300Removed
       ){
 
         loaded.juntas =
@@ -441,7 +500,7 @@
   // INICIO
   // ============================================================
 
-  function init(){
+  async function init(){
 
     applyTheme();
 
@@ -452,6 +511,14 @@
     rotatePhrase(false);
 
     maybeKellyReminder();
+
+    /*
+      Aseguramos que la junta principal
+      exista también en Neon antes
+      de registrar pagos.
+    */
+
+    await ensureDefaultJuntaCloud();
   }
 
 
@@ -1557,6 +1624,26 @@
     }
 
 
+    /*
+      Si es la junta principal,
+      comprobamos que exista en Neon.
+    */
+
+    if(
+      j.id === "junta_default"
+    ){
+
+      const cloudReady =
+        await ensureDefaultJuntaCloud();
+
+
+      if(!cloudReady){
+
+        return;
+      }
+    }
+
+
     const data =
       await fileToDataURL(
         file
@@ -1593,29 +1680,7 @@
 
 
     // ==========================================================
-    // PASO 1
-    // Aseguramos que la junta exista en Neon.
-    //
-    // Esto es especialmente importante para junta_default,
-    // porque la junta original nació primero en localStorage.
-    //
-    // api/juntas.js usa ON CONFLICT, así que si ya existe,
-    // simplemente la actualiza y no crea duplicados.
-    // ==========================================================
-
-    const cloudJunta =
-      await apiCreateJunta(j);
-
-
-    if(!cloudJunta){
-
-      return;
-    }
-
-
-    // ==========================================================
-    // PASO 2
-    // Guardamos primero el aporte en Neon.
+    // PRIMERO → NEON
     // ==========================================================
 
     const savedPayment =
@@ -1631,8 +1696,7 @@
 
 
     // ==========================================================
-    // PASO 3
-    // Si Neon confirmó el pago, recién lo guardamos localmente.
+    // SEGUNDO → LOCAL
     // ==========================================================
 
     const before =
@@ -1650,29 +1714,16 @@
       before + amount;
 
 
-    j.payments.push({
-
-      id:
-        payment.id,
-
-      amount:
-        payment.amount,
-
-      date:
-        payment.date,
-
-      method:
-        payment.method,
-
-      note:
-        payment.note,
-
-      receiptData:
-        payment.receiptData,
-
-      receiptUrl:
-        ""
-    });
+    j.payments.push(
+      {
+        id:payment.id,
+        amount:payment.amount,
+        date:payment.date,
+        method:payment.method,
+        note:payment.note,
+        receiptData:payment.receiptData
+      }
+    );
 
 
     save();
@@ -3589,9 +3640,11 @@
 
       <p class="intro">
 
-        Por ahora estamos preparando
-        la sincronización completa
-        con la nube.
+        La información de tus juntas
+        ya puede guardarse en la nube.
+
+        Algunas funciones todavía
+        están en proceso de migración.
 
       </p>
 
@@ -3641,9 +3694,8 @@
 
             <small>
 
-              La sincronización
-              con la nube está
-              en construcción.
+              Juntas y aportes de juntas
+              ya se guardan en Neon.
 
             </small>
 
