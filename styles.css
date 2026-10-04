@@ -1209,24 +1209,3 @@ html.mj-shared-mode-pending .toast-wrap{
   .card-actions{flex-wrap:wrap}
   .card-actions > button{flex:1 1 auto}
 }
-
-/* ============================================================
-   ACTUALIZAR DATOS
-   ============================================================ */
-.mj-refresh-btn{
-  position:relative;
-}
-.mj-refresh-btn:disabled{
-  opacity:.7;
-  cursor:wait;
-}
-.mj-refresh-btn.mj-refreshing{
-  animation:mjRefreshSpin .65s linear infinite;
-}
-@keyframes mjRefreshSpin{
-  to{transform:rotate(360deg)}
-}
-
-
-/* La vista compartida es de solo lectura y no muestra toasts de la sesión propietaria. */
-html.mj-shared-mode .toast-wrap{display:none!important}
