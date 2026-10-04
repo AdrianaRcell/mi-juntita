@@ -3,10 +3,6 @@ import sql from "./db.js";
 export default async function handler(request, response) {
   try {
 
-    // ==========================================================
-    // GET — OBTENER PAGOS DE KELLY
-    // ==========================================================
-
     if (request.method === "GET") {
 
       const payments = await sql`
@@ -21,11 +17,8 @@ export default async function handler(request, response) {
           created_at
         FROM kelly_payments
         WHERE kelly_id = 1
-        ORDER BY
-          payment_date ASC,
-          created_at ASC
+        ORDER BY payment_date ASC, created_at ASC
       `;
-
 
       return response.status(200).json({
         ok: true,
@@ -33,10 +26,6 @@ export default async function handler(request, response) {
       });
     }
 
-
-    // ==========================================================
-    // POST — REGISTRAR PAGO DE KELLY
-    // ==========================================================
 
     if (request.method === "POST") {
 
@@ -50,33 +39,36 @@ export default async function handler(request, response) {
       } = request.body || {};
 
 
-      if (
-        !id ||
-        !amount ||
-        !payment_date
-      ) {
-
-        return response.status(400).json({
-          ok: false,
-          error: "Faltan datos del pago"
-        });
-      }
-
-
       const numericAmount =
         Number(amount);
 
 
       if (
-        !Number.isFinite(numericAmount) ||
-        numericAmount <= 0
+        !id ||
+        !numericAmount ||
+        numericAmount <= 0 ||
+        !payment_date
       ) {
 
         return response.status(400).json({
           ok: false,
-          error: "El monto del pago no es válido"
+          error: "Faltan datos del pago de Kelly"
         });
       }
+
+
+      await sql`
+        INSERT INTO kelly (
+          id,
+          original
+        )
+        VALUES (
+          1,
+          2800
+        )
+        ON CONFLICT (id)
+        DO NOTHING
+      `;
 
 
       const result = await sql`
@@ -109,15 +101,10 @@ export default async function handler(request, response) {
     }
 
 
-    // ==========================================================
-    // MÉTODO NO PERMITIDO
-    // ==========================================================
-
     return response.status(405).json({
       ok: false,
       error: "Método no permitido"
     });
-
 
   } catch (error) {
 
@@ -125,7 +112,6 @@ export default async function handler(request, response) {
       "Error en /api/kelly-payments:",
       error
     );
-
 
     return response.status(500).json({
       ok: false,
