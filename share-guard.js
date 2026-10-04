@@ -17,6 +17,7 @@
 
   if (!token) return;
 
+  window.MiJuntitaSharedMode = true;
   document.documentElement.classList.add("mj-shared-mode-pending");
 
   const nativeFetch = window.fetch.bind(window);
