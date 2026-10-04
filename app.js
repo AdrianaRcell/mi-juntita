@@ -40,6 +40,23 @@
   const uid = p =>
     `${p}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
+  const formatDate = value => {
+
+    const text =
+      String(value || "").trim();
+
+    const match =
+      text.match(
+        /^(\d{4})-(\d{2})-(\d{2})$/
+      );
+
+    if(!match){
+      return text || "Sin fecha";
+    }
+
+    return `${match[3]}/${match[2]}/${match[1]}`;
+  };
+
 
   // ============================================================
   // CARGA INICIAL — NO BLOQUEAR LA APP
@@ -178,8 +195,6 @@
   }
 
 
-  // Mostrar la flor solamente si realmente
-  // hay una pequeña espera.
   function prepareLoadingScreen(){
 
     createLoadingScreen();
@@ -257,10 +272,6 @@
   }
 
 
-  // ============================================================
-  // ESTADO
-  // ============================================================
-
   let state = load();
 
   let modalContext = null;
@@ -330,10 +341,8 @@
           }
         );
 
-
       const data =
         await response.json();
-
 
       if(!data.ok){
 
@@ -342,7 +351,6 @@
           "No se pudo guardar la junta"
         );
       }
-
 
       return data.junta;
 
@@ -375,10 +383,8 @@
           `/api/junta-payments?junta_id=${encodeURIComponent(juntaId)}`
         );
 
-
       const data =
         await response.json();
-
 
       if(!data.ok){
 
@@ -387,7 +393,6 @@
           "No se pudieron cargar los aportes"
         );
       }
-
 
       return data.payments || [];
 
@@ -445,10 +450,8 @@
           }
         );
 
-
       const data =
         await response.json();
-
 
       if(!data.ok){
 
@@ -457,7 +460,6 @@
           "No se pudo guardar el aporte"
         );
       }
-
 
       return data.payment;
 
@@ -491,7 +493,6 @@
       const data =
         await response.json();
 
-
       if(!data.ok){
 
         throw new Error(
@@ -499,7 +500,6 @@
           "No se pudo cargar Kelly"
         );
       }
-
 
       return data.kelly || null;
 
@@ -538,10 +538,8 @@
           }
         );
 
-
       const data =
         await response.json();
-
 
       if(!data.ok){
 
@@ -550,7 +548,6 @@
           "No se pudo guardar Kelly"
         );
       }
-
 
       return data.kelly;
 
@@ -579,10 +576,8 @@
           "/api/kelly-payments"
         );
 
-
       const data =
         await response.json();
-
 
       if(!data.ok){
 
@@ -591,7 +586,6 @@
           "No se pudieron cargar los pagos de Kelly"
         );
       }
-
 
       return data.payments || [];
 
@@ -646,10 +640,8 @@
           }
         );
 
-
       const data =
         await response.json();
-
 
       if(!data.ok){
 
@@ -658,7 +650,6 @@
           "No se pudo guardar el pago de Kelly"
         );
       }
-
 
       return data.payment;
 
@@ -691,7 +682,6 @@
       );
     }
 
-
     if(
       !file.type ||
       !file.type.startsWith("image/")
@@ -701,7 +691,6 @@
         "El comprobante debe ser una imagen."
       );
     }
-
 
     if(
       file.size >
@@ -713,16 +702,13 @@
       );
     }
 
-
     const formData =
       new FormData();
-
 
     formData.append(
       "file",
       file
     );
-
 
     const response =
       await fetch(
@@ -733,9 +719,7 @@
         }
       );
 
-
     let data = null;
-
 
     try{
 
@@ -749,7 +733,6 @@
       );
     }
 
-
     if(
       !response.ok ||
       !data.ok ||
@@ -761,7 +744,6 @@
         "No se pudo subir el comprobante."
       );
     }
-
 
     return data.url;
   }
@@ -779,12 +761,9 @@
           j.id === "junta_default"
       );
 
-
     if(!junta){
-
       return true;
     }
-
 
     if(
       state.migrations?.defaultJuntaCloud
@@ -793,18 +772,14 @@
       return true;
     }
 
-
     const saved =
       await apiCreateJunta(
         junta
       );
 
-
     if(!saved){
-
       return false;
     }
-
 
     state.migrations = {
 
@@ -813,9 +788,7 @@
       defaultJuntaCloud:true
     };
 
-
     save();
-
 
     return true;
   }
@@ -830,24 +803,18 @@
     const cloudKelly =
       await apiGetKelly();
 
-
     if(cloudKelly){
-
       return true;
     }
-
 
     const saved =
       await apiSaveKelly(
         state.kelly
       );
 
-
     if(!saved){
-
       return false;
     }
-
 
     return true;
   }
@@ -864,12 +831,9 @@
       let cloudJuntas =
         await apiGetJuntas();
 
-
       if(cloudJuntas === null){
-
         return false;
       }
-
 
       for(
         const localJunta
@@ -883,7 +847,6 @@
               localJunta.id
           );
 
-
         if(!exists){
 
           await apiCreateJunta(
@@ -892,19 +855,14 @@
         }
       }
 
-
       cloudJuntas =
         await apiGetJuntas();
 
-
       if(cloudJuntas === null){
-
         return false;
       }
 
-
       const mergedJuntas = [];
-
 
       for(
         const cloudJunta
@@ -918,12 +876,10 @@
               cloudJunta.id
           );
 
-
         const cloudPayments =
           await apiGetJuntaPayments(
             cloudJunta.id
           );
-
 
         if(cloudPayments === null){
 
@@ -937,10 +893,8 @@
           continue;
         }
 
-
         const paymentsById =
           new Map();
-
 
         cloudPayments.forEach(
           payment => {
@@ -951,7 +905,6 @@
                   p.id ===
                   payment.id
               );
-
 
             paymentsById.set(
               payment.id,
@@ -990,7 +943,6 @@
           }
         );
 
-
         if(localJunta){
 
           for(
@@ -1010,12 +962,10 @@
               continue;
             }
 
-
             const uploaded =
               await apiCreateJuntaPayment(
                 localPayment
               );
-
 
             if(uploaded){
 
@@ -1062,12 +1012,10 @@
           }
         }
 
-
         const payments =
           Array.from(
             paymentsById.values()
           );
-
 
         mergedJuntas.push({
 
@@ -1101,7 +1049,6 @@
         });
       }
 
-
       if(mergedJuntas.length){
 
         state.juntas =
@@ -1109,7 +1056,6 @@
 
         save();
       }
-
 
       console.log(
         "Mi Juntita: juntas sincronizadas con Neon."
@@ -1140,22 +1086,17 @@
       const cloudKelly =
         await apiGetKelly();
 
-
       if(cloudKelly === null){
-
         return false;
       }
-
 
       state.kelly.original =
         Number(
           cloudKelly.original || 0
         );
 
-
       const cloudPayments =
         await apiGetKellyPayments();
-
 
       if(cloudPayments === null){
 
@@ -1164,7 +1105,6 @@
         return false;
       }
 
-
       const localPayments =
         Array.isArray(
           state.kelly.payments
@@ -1172,10 +1112,8 @@
           ? state.kelly.payments
           : [];
 
-
       const paymentsById =
         new Map();
-
 
       cloudPayments.forEach(
         payment => {
@@ -1186,7 +1124,6 @@
                 p.id ===
                 payment.id
             );
-
 
           paymentsById.set(
             payment.id,
@@ -1225,7 +1162,6 @@
         }
       );
 
-
       for(
         const localPayment
         of localPayments
@@ -1240,12 +1176,10 @@
           continue;
         }
 
-
         const uploaded =
           await apiCreateKellyPayment(
             localPayment
           );
-
 
         if(uploaded){
 
@@ -1291,15 +1225,12 @@
         }
       }
 
-
       state.kelly.payments =
         Array.from(
           paymentsById.values()
         );
 
-
       save();
-
 
       console.log(
         "Mi Juntita: Kelly sincronizada con Neon."
@@ -1330,20 +1261,15 @@
       const raw =
         localStorage.getItem(KEY);
 
-
       if(!raw){
-
         return initialState();
       }
-
 
       const parsed =
         JSON.parse(raw);
 
-
       const fresh =
         initialState();
-
 
       const loaded = {
 
@@ -1378,9 +1304,7 @@
         }
       };
 
-
       let migrated = false;
-
 
       if(
         !loaded.migrations
@@ -1415,7 +1339,6 @@
             return j;
           });
 
-
         loaded.migrations = {
 
           ...(loaded.migrations || {}),
@@ -1423,10 +1346,8 @@
           initial300Removed:true
         };
 
-
         migrated = true;
       }
-
 
       if(migrated){
 
@@ -1435,7 +1356,6 @@
           JSON.stringify(loaded)
         );
       }
-
 
       return loaded;
 
@@ -1476,13 +1396,6 @@
 
   async function init(){
 
-    /*
-      IMPORTANTE:
-
-      Primero mostramos la app con los datos locales.
-      Neon NO bloquea el primer render.
-    */
-
     applyTheme();
 
     render();
@@ -1493,19 +1406,7 @@
 
     maybeKellyReminder();
 
-
-    /*
-      La pantalla de carga solamente acompaña
-      el arranque. Nunca se espera a Neon
-      para mostrar la aplicación.
-    */
-
     prepareLoadingScreen();
-
-
-    /*
-      La nube trabaja en segundo plano.
-    */
 
     setTimeout(
       async () => {
@@ -1519,12 +1420,6 @@
           await ensureKellyCloud();
 
           await syncKellyCloud();
-
-          /*
-            Cuando la nube termina,
-            actualizamos la interfaz
-            con los datos más recientes.
-          */
 
           render();
 
@@ -1615,6 +1510,37 @@
       "click",
       e => {
 
+        const juntaDetail =
+          e.target.closest(
+            "[data-junta-payment-detail]"
+          );
+
+        if(juntaDetail){
+
+          openJuntaPaymentDetail(
+            juntaDetail.dataset.juntaId,
+            juntaDetail.dataset.juntaPaymentDetail
+          );
+
+          return;
+        }
+
+
+        const kellyDetail =
+          e.target.closest(
+            "[data-kelly-payment-detail]"
+          );
+
+        if(kellyDetail){
+
+          openKellyPaymentDetail(
+            kellyDetail.dataset.kellyPaymentDetail
+          );
+
+          return;
+        }
+
+
         const img =
           e.target.closest(
             "[data-receipt-view]"
@@ -1623,7 +1549,26 @@
         if(img){
 
           openReceipt(
-            img.dataset.receiptView
+            img.dataset.receiptView,
+            {
+              backType:
+                img.dataset.receiptBackType || "",
+
+              backId:
+                img.dataset.receiptBackId || "",
+
+              amount:
+                img.dataset.receiptAmount || "",
+
+              date:
+                img.dataset.receiptDate || "",
+
+              method:
+                img.dataset.receiptMethod || "",
+
+              note:
+                img.dataset.receiptNote || ""
+            }
           );
         }
       }
@@ -1644,10 +1589,8 @@
         state.theme === "dark"
       );
 
-
     const themeBtn =
       $("#themeBtn");
-
 
     if(themeBtn){
 
@@ -1685,14 +1628,12 @@
 
     if(!el) return;
 
-
     if(animate){
 
       el.classList.add(
         "phrase-swap"
       );
     }
-
 
     setTimeout(() => {
 
@@ -1702,12 +1643,10 @@
         ) %
         PHRASES.length;
 
-
       el.textContent =
         PHRASES[
           state.phraseIndex
         ];
-
 
       if(animate){
 
@@ -1717,7 +1656,6 @@
           )
         );
       }
-
 
       save();
 
@@ -1737,10 +1675,8 @@
 
     renderTasks();
 
-
     const phrase =
       $("#savingPhrase");
-
 
     if(phrase){
 
@@ -1751,10 +1687,8 @@
         ];
     }
 
-
     const decor =
       $("#decor");
-
 
     if(decor){
 
@@ -1790,7 +1724,6 @@
 
     if(!grid) return;
 
-
     grid.innerHTML =
       state.juntas
         .map((j, idx) => {
@@ -1805,7 +1738,6 @@
               0
             );
 
-
           const pct =
             j.goal
               ? Math.min(
@@ -1814,12 +1746,10 @@
                 )
               : 0;
 
-
           const equivalent =
             j.normal
               ? paid / j.normal
               : 0;
-
 
           const receipts =
             j.payments.filter(
@@ -1828,10 +1758,8 @@
                 p.receiptData
             );
 
-
           const complete =
             paid >= j.goal;
-
 
           return `
 
@@ -1881,7 +1809,6 @@
 
               </div>
 
-
               <button
                 class="more"
                 data-junta-history="${esc(j.id)}"
@@ -1892,7 +1819,6 @@
 
             </div>
 
-
             <div class="money">
 
               ${money(paid)}
@@ -1902,7 +1828,6 @@
               </small>
 
             </div>
-
 
             <div class="stats">
 
@@ -1915,14 +1840,12 @@
 
               </span>
 
-
               <span class="pill">
 
                 Meta
                 ${money(j.goal)}
 
               </span>
-
 
               <span class="pill">
 
@@ -1932,7 +1855,6 @@
               </span>
 
             </div>
-
 
             <div class="progress-row">
 
@@ -1948,7 +1870,6 @@
 
               </div>
 
-
               <div
                 class="progress"
                 id="progress-${esc(j.id)}"
@@ -1961,7 +1882,6 @@
               </div>
 
             </div>
-
 
             ${
               complete
@@ -1978,7 +1898,6 @@
                 : ""
             }
 
-
             <div class="card-actions">
 
               <button
@@ -1989,7 +1908,6 @@
                 🌸 Registrar junta
 
               </button>
-
 
               <button
                 class="secondary"
@@ -2066,7 +1984,6 @@
 
     if(!panel) return;
 
-
     const total =
       state.expenses.reduce(
         (s,e) =>
@@ -2076,7 +1993,6 @@
           ),
         0
       );
-
 
     panel.innerHTML = `
 
@@ -2095,13 +2011,11 @@
 
       </div>
 
-
       <div class="expense-total">
 
         ${money(total)}
 
       </div>
-
 
       <div class="list">
 
@@ -2131,7 +2045,6 @@
                   </small>
 
                 </div>
-
 
                 <strong>
 
@@ -2172,7 +2085,6 @@
 
     if(!panel) return;
 
-
     panel.innerHTML = `
 
       <div class="panel-head">
@@ -2189,7 +2101,6 @@
         </button>
 
       </div>
-
 
       <div style="margin-top:10px">
 
@@ -2210,7 +2121,6 @@
                   ${t.done ? "✓" : ""}
 
                 </button>
-
 
                 <span>
 
@@ -2238,13 +2148,11 @@
       </div>
     `;
 
-
     $("#addTaskBtn")
       ?.addEventListener(
         "click",
         addTask
       );
-
 
     document
       .querySelectorAll(
@@ -2274,16 +2182,13 @@
     modalContext =
       context;
 
-
     $("#modalContent")
       .innerHTML =
       html;
 
-
     $("#modalBackdrop")
       .hidden =
       false;
-
 
     requestAnimationFrame(() =>
       $(
@@ -2328,7 +2233,6 @@
 
         </label>
 
-
         <div
           class="file-box"
           id="receiptBox"
@@ -2341,7 +2245,6 @@
             ${required ? "required" : ""}
           >
 
-
           <div class="hint">
 
             El comprobante se subirá
@@ -2349,13 +2252,11 @@
 
           </div>
 
-
           <img
             class="receipt-preview"
             id="receiptPreview"
             alt="Vista previa del comprobante"
           >
-
 
           <div
             class="file-required-error"
@@ -2381,7 +2282,6 @@
 
     if(!input) return;
 
-
     input.addEventListener(
       "change",
       e => {
@@ -2389,28 +2289,23 @@
         const file =
           e.target.files?.[0];
 
-
         const img =
           $("#receiptPreview");
-
 
         if(file){
 
           img.src =
             URL.createObjectURL(file);
 
-
           img.classList.add(
             "show"
           );
-
 
           $("#receiptBox")
             .classList
             .remove(
               "invalid"
             );
-
 
           $("#receiptError")
             .style.display =
@@ -2435,16 +2330,13 @@
           x.id === juntaId
       );
 
-
     if(!j) return;
-
 
     openModal(`
 
       <h2>
         🌸 Registrar aporte
       </h2>
-
 
       <p class="intro">
 
@@ -2454,7 +2346,6 @@
         un monto diferente.
 
       </p>
-
 
       <div class="form-grid">
 
@@ -2470,7 +2361,6 @@
 
           </label>
 
-
           <input
             id="amount"
             type="number"
@@ -2480,7 +2370,6 @@
           >
 
         </div>
-
 
         <div class="field">
 
@@ -2494,7 +2383,6 @@
 
           </label>
 
-
           <input
             id="date"
             type="date"
@@ -2503,13 +2391,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Método de pago
           </label>
-
 
           <select id="method">
 
@@ -2527,13 +2413,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Nota opcional
           </label>
-
 
           <input
             id="note"
@@ -2542,11 +2426,9 @@
 
         </div>
 
-
         ${receiptField(true)}
 
       </div>
-
 
       <div class="form-actions">
 
@@ -2556,7 +2438,6 @@
         >
           Cancelar
         </button>
-
 
         <button
           class="primary"
@@ -2572,13 +2453,10 @@
       juntaId
     });
 
-
     bindReceiptPreview();
-
 
     $("#cancelForm").onclick =
       closeModal;
-
 
     $("#saveJuntaPayment").onclick =
       saveJuntaPayment;
@@ -2592,11 +2470,9 @@
         $("#amount").value
       );
 
-
     const file =
       $("#receiptFile")
         ?.files?.[0];
-
 
     if(
       !amount ||
@@ -2608,22 +2484,18 @@
       );
     }
 
-
     if(!file){
 
       $("#receiptBox")
         .classList
         .add("invalid");
 
-
       $("#receiptError")
         .style.display =
         "block";
 
-
       return;
     }
-
 
     const j =
       state.juntas.find(
@@ -2632,14 +2504,12 @@
           modalContext.juntaId
       );
 
-
     if(!j){
 
       return toast(
         "No se encontró la junta."
       );
     }
-
 
     if(
       j.id === "junta_default"
@@ -2648,23 +2518,18 @@
       const cloudReady =
         await ensureDefaultJuntaCloud();
 
-
       if(!cloudReady){
-
         return;
       }
     }
 
-
     let receiptUrl = "";
-
 
     try{
 
       toast(
         "Subiendo comprobante…"
       );
-
 
       receiptUrl =
         await uploadReceipt(
@@ -2678,13 +2543,11 @@
         error
       );
 
-
       return toast(
         error.message ||
         "No se pudo subir el comprobante."
       );
     }
-
 
     const payment = {
 
@@ -2713,18 +2576,14 @@
       receiptData:""
     };
 
-
     const savedPayment =
       await apiCreateJuntaPayment(
         payment
       );
 
-
     if(!savedPayment){
-
       return;
     }
-
 
     const before =
       j.payments.reduce(
@@ -2736,10 +2595,8 @@
         0
       );
 
-
     const after =
       before + amount;
-
 
     j.payments.push({
 
@@ -2765,20 +2622,15 @@
       receiptData:""
     });
 
-
     save();
-
 
     closeModal();
 
-
     render();
-
 
     animatePayment(
       j.id
     );
-
 
     if(
       before < j.goal &&
@@ -2787,7 +2639,6 @@
 
       celebrate();
     }
-
 
     toast(
       `Aporte de ${money(amount)} guardado ♡`
@@ -2808,14 +2659,11 @@
         `[data-junta-card="${CSS.escape(juntaId)}"]`
       );
 
-
     if(!card) return;
-
 
     card.classList.remove(
       "payment-pop"
     );
-
 
     requestAnimationFrame(() =>
       card.classList.add(
@@ -2823,17 +2671,14 @@
       )
     );
 
-
     const bar =
       card.querySelector(
         ".progress"
       );
 
-
     bar?.classList.add(
       "payment-glow"
     );
-
 
     setTimeout(
       () =>
@@ -2843,7 +2688,6 @@
       1200
     );
 
-
     const symbols =
       [
         "✦",
@@ -2852,7 +2696,6 @@
         "🍃",
         "✨"
       ];
-
 
     for(
       let i=0;
@@ -2865,10 +2708,8 @@
           "span"
         );
 
-
       p.className =
         "payment-spark";
-
 
       p.textContent =
         symbols[
@@ -2878,14 +2719,12 @@
           )
         ];
 
-
       p.style.left =
         (
           30 +
           Math.random()*45
         ) +
         "%";
-
 
       p.style.top =
         (
@@ -2894,29 +2733,24 @@
         ) +
         "%";
 
-
       p.style.setProperty(
         "--dx",
         `${(Math.random()-.5)*100}px`
       );
-
 
       p.style.setProperty(
         "--dy",
         `${-30-Math.random()*70}px`
       );
 
-
       p.style.setProperty(
         "--rot",
         `${(Math.random()-.5)*80}deg`
       );
 
-
       card.appendChild(
         p
       );
-
 
       setTimeout(
         () =>
@@ -2938,7 +2772,6 @@
 
     if(!layer) return;
 
-
     const set =
       CELEBRATIONS[
         Math.floor(
@@ -2946,7 +2779,6 @@
           CELEBRATIONS.length
         )
       ];
-
 
     for(
       let i=0;
@@ -2959,10 +2791,8 @@
           "span"
         );
 
-
       p.className =
         "celebrate-piece";
-
 
       p.textContent =
         set[
@@ -2972,41 +2802,34 @@
           )
         ];
 
-
       p.style.setProperty(
         "--x",
         `${(Math.random()-.5)*70}vw`
       );
-
 
       p.style.setProperty(
         "--y",
         `${(Math.random()-.5)*55}vh`
       );
 
-
       p.style.setProperty(
         "--scale",
         `${.7+Math.random()*1.1}`
       );
-
 
       p.style.setProperty(
         "--rot",
         `${(Math.random()-.5)*360}deg`
       );
 
-
       p.style.setProperty(
         "--duration",
         `${.9+Math.random()*.8}s`
       );
 
-
       layer.appendChild(
         p
       );
-
 
       setTimeout(
         () =>
@@ -3029,7 +2852,6 @@
         💗 Registrar pago a Kelly
       </h2>
 
-
       <p class="intro">
 
         Sin plazo fijo.
@@ -3037,7 +2859,6 @@
         guardado con su comprobante.
 
       </p>
-
 
       <div class="form-grid">
 
@@ -3053,7 +2874,6 @@
 
           </label>
 
-
           <input
             id="amount"
             type="number"
@@ -3063,7 +2883,6 @@
           >
 
         </div>
-
 
         <div class="field">
 
@@ -3077,7 +2896,6 @@
 
           </label>
 
-
           <input
             id="date"
             type="date"
@@ -3086,13 +2904,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Método de pago
           </label>
-
 
           <select id="method">
 
@@ -3110,13 +2926,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Nota opcional
           </label>
-
 
           <input
             id="note"
@@ -3125,13 +2939,18 @@
 
         </div>
 
-
         ${receiptField(true)}
 
       </div>
 
-
       <div class="form-actions">
+
+        <button
+          class="secondary"
+          id="viewKellyHistory"
+        >
+          Ver pagos anteriores
+        </button>
 
         <button
           class="secondary"
@@ -3139,7 +2958,6 @@
         >
           Cancelar
         </button>
-
 
         <button
           class="primary"
@@ -3154,13 +2972,13 @@
       type:"kellyPayment"
     });
 
-
     bindReceiptPreview();
 
+    $("#viewKellyHistory").onclick =
+      openKellyHistory;
 
     $("#cancelForm").onclick =
       closeModal;
-
 
     $("#saveKellyPayment").onclick =
       saveKellyPayment;
@@ -3174,11 +2992,9 @@
         $("#amount").value
       );
 
-
     const file =
       $("#receiptFile")
         ?.files?.[0];
-
 
     if(
       !amount ||
@@ -3190,42 +3006,33 @@
       );
     }
 
-
     if(!file){
 
       $("#receiptBox")
         .classList
         .add("invalid");
 
-
       $("#receiptError")
         .style.display =
         "block";
 
-
       return;
     }
-
 
     const cloudReady =
       await ensureKellyCloud();
 
-
     if(!cloudReady){
-
       return;
     }
 
-
     let receiptUrl = "";
-
 
     try{
 
       toast(
         "Subiendo comprobante…"
       );
-
 
       receiptUrl =
         await uploadReceipt(
@@ -3239,13 +3046,11 @@
         error
       );
 
-
       return toast(
         error.message ||
         "No se pudo subir el comprobante."
       );
     }
-
 
     const payment = {
 
@@ -3271,18 +3076,14 @@
       receiptData:""
     };
 
-
     const savedPayment =
       await apiCreateKellyPayment(
         payment
       );
 
-
     if(!savedPayment){
-
       return;
     }
-
 
     state.kelly.payments.push({
 
@@ -3308,20 +3109,15 @@
       receiptData:""
     });
 
-
     save();
-
 
     closeModal();
 
-
     render();
-
 
     toast(
       `Pago de ${money(amount)} registrado para Kelly 💗`
     );
-
 
     animateKelly();
   }
@@ -3333,7 +3129,6 @@
       document.querySelector(
         ".kelly-action .action-icon"
       );
-
 
     if(btn){
 
@@ -3374,14 +3169,12 @@
         🪙 Gasto rápido
       </h2>
 
-
       <p class="intro">
 
         Solo lo esencial.
         Sin comprobante.
 
       </p>
-
 
       <div class="form-grid">
 
@@ -3397,7 +3190,6 @@
 
           </label>
 
-
           <input
             id="amount"
             type="number"
@@ -3408,13 +3200,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Fecha
           </label>
-
 
           <input
             id="date"
@@ -3424,13 +3214,11 @@
 
         </div>
 
-
         <div class="field full">
 
           <label>
             Nota
           </label>
-
 
           <input
             id="note"
@@ -3441,7 +3229,6 @@
 
       </div>
 
-
       <div class="form-actions">
 
         <button
@@ -3450,7 +3237,6 @@
         >
           Cancelar
         </button>
-
 
         <button
           class="primary"
@@ -3463,10 +3249,8 @@
 
     `);
 
-
     $("#cancelForm").onclick =
       closeModal;
-
 
     $("#saveExpense").onclick =
       () => {
@@ -3475,7 +3259,6 @@
           Number(
             $("#amount").value
           );
-
 
         if(
           !amount ||
@@ -3486,7 +3269,6 @@
             "Escribe un monto válido."
           );
         }
-
 
         state.expenses.push({
 
@@ -3505,20 +3287,15 @@
               .trim()
         });
 
-
         save();
-
 
         closeModal();
 
-
         render();
-
 
         toast(
           "Gasto guardado ✦"
         );
-
 
         randomExpenseAnimation();
       };
@@ -3532,9 +3309,7 @@
         ".gasto-action .action-icon"
       );
 
-
     if(!icon) return;
-
 
     const effects =
       [
@@ -3545,7 +3320,6 @@
         "💸"
       ];
 
-
     icon.textContent =
       effects[
         Math.floor(
@@ -3553,7 +3327,6 @@
           effects.length
         )
       ];
-
 
     icon.animate(
       [
@@ -3576,7 +3349,6 @@
       }
     );
 
-
     setTimeout(
       () =>
         icon.textContent="🪙",
@@ -3596,9 +3368,7 @@
         "¿Qué pendiente quieres agregar?"
       );
 
-
     if(!text?.trim()) return;
-
 
     state.tasks.push({
 
@@ -3611,12 +3381,9 @@
       done:false
     });
 
-
     save();
 
-
     renderTasks();
-
 
     toast(
       "Pendiente agregado ♡"
@@ -3631,21 +3398,16 @@
         x => x.id === id
       );
 
-
     if(!t || t.done) return;
-
 
     t.done = true;
 
-
     save();
-
 
     const row =
       document.querySelector(
         `[data-task="${CSS.escape(id)}"]`
       );
-
 
     row
       ?.querySelector(".check")
@@ -3669,7 +3431,6 @@
         }
       );
 
-
     setTimeout(() => {
 
       state.tasks =
@@ -3678,9 +3439,7 @@
             x.id !== id
         );
 
-
       save();
-
 
       renderTasks();
 
@@ -3689,7 +3448,7 @@
 
 
   // ============================================================
-  // HISTORIAL
+  // HISTORIAL DE JUNTAS
   // ============================================================
 
   function openJuntaHistory(id){
@@ -3700,9 +3459,7 @@
           x.id === id
       );
 
-
     if(!j) return;
-
 
     openModal(`
 
@@ -3713,14 +3470,12 @@
 
       </h2>
 
-
       <p class="intro">
 
-        Todos los aportes
-        y sus comprobantes.
+        Toca un registro para ver
+        el detalle completo y su comprobante.
 
       </p>
-
 
       <div class="history">
 
@@ -3741,19 +3496,21 @@
 
               return `
 
-                <div class="history-row">
+                <div
+                  class="history-row"
+                >
 
-                  <div>
+                  <div class="left">
 
                     <b>
                       ${money(p.amount)}
                     </b>
 
-                    <br>
-
                     <small>
 
-                      ${esc(p.date)}
+                      ${esc(
+                        formatDate(p.date)
+                      )}
 
                       ${
                         p.method
@@ -3761,31 +3518,28 @@
                           : ""
                       }
 
-                      ${
-                        p.note
-                          ? ` · ${esc(p.note)}`
-                          : ""
-                      }
-
                     </small>
+
+                    ${
+                      p.note
+                        ? `
+                          <small>
+                            ${esc(p.note)}
+                          </small>
+                        `
+                        : ""
+                    }
 
                   </div>
 
-
-                  ${
-                    receipt
-                      ? `
-
-                        <button
-                          class="secondary"
-                          data-receipt-view="${esc(receipt)}"
-                        >
-                          📷 Ver comprobante
-                        </button>
-
-                      `
-                      : ""
-                  }
+                  <button
+                    class="secondary"
+                    type="button"
+                    data-junta-payment-detail="${esc(p.id)}"
+                    data-junta-id="${esc(j.id)}"
+                  >
+                    Ver detalle →
+                  </button>
 
                 </div>
 
@@ -3805,7 +3559,470 @@
         }
 
       </div>
-    `);
+
+    `,{
+      type:"juntaHistory",
+      juntaId:id
+    });
+  }
+
+
+  // ============================================================
+  // DETALLE DE APORTE DE JUNTA
+  // ============================================================
+
+  function openJuntaPaymentDetail(
+    juntaId,
+    paymentId
+  ){
+
+    const j =
+      state.juntas.find(
+        x =>
+          x.id === juntaId
+      );
+
+    if(!j) return;
+
+    const payment =
+      j.payments.find(
+        p =>
+          p.id === paymentId
+      );
+
+    if(!payment){
+
+      return toast(
+        "No se encontró ese aporte."
+      );
+    }
+
+    const receipt =
+      payment.receiptUrl ||
+      payment.receiptData ||
+      "";
+
+    openModal(`
+
+      <div class="receipt-detail">
+
+        <button
+          class="secondary"
+          id="backToJuntaHistory"
+          type="button"
+        >
+          ← Volver a movimientos
+        </button>
+
+
+        <h2>
+          🌸 Detalle del aporte
+        </h2>
+
+
+        <p class="intro">
+          ${esc(j.name)}
+        </p>
+
+
+        <div class="readonly-box">
+
+          <div style="margin-bottom:8px">
+
+            <small>
+              Monto
+            </small>
+
+            <br>
+
+            <strong>
+              ${money(payment.amount)}
+            </strong>
+
+          </div>
+
+
+          <div style="margin-bottom:8px">
+
+            <small>
+              Fecha
+            </small>
+
+            <br>
+
+            <strong>
+              ${esc(formatDate(payment.date))}
+            </strong>
+
+          </div>
+
+
+          <div style="margin-bottom:8px">
+
+            <small>
+              Método
+            </small>
+
+            <br>
+
+            <strong>
+              ${
+                esc(
+                  payment.method ||
+                  "No indicado"
+                )
+              }
+            </strong>
+
+          </div>
+
+
+          ${
+            payment.note
+              ? `
+                <div>
+
+                  <small>
+                    Nota
+                  </small>
+
+                  <br>
+
+                  <strong>
+                    ${esc(payment.note)}
+                  </strong>
+
+                </div>
+              `
+              : ""
+          }
+
+        </div>
+
+
+        ${
+          receipt
+            ? `
+              <div style="margin-top:16px">
+
+                <p
+                  class="tiny"
+                  style="margin-bottom:8px"
+                >
+                  Comprobante
+                </p>
+
+                <img
+                  class="photo-modal-preview"
+                  src="${esc(receipt)}"
+                  alt="Comprobante del aporte"
+                >
+
+              </div>
+            `
+            : `
+              <div class="empty">
+
+                Este aporte no tiene
+                comprobante asociado.
+
+              </div>
+            `
+        }
+
+      </div>
+
+    `,{
+      type:"juntaPaymentDetail",
+      juntaId,
+      paymentId
+    });
+
+    $("#backToJuntaHistory")?.addEventListener(
+      "click",
+      () =>
+        openJuntaHistory(
+          juntaId
+        )
+    );
+  }
+
+
+  // ============================================================
+  // HISTORIAL DE KELLY
+  // ============================================================
+
+  function openKellyHistory(){
+
+    const payments =
+      Array.isArray(
+        state.kelly.payments
+      )
+        ? state.kelly.payments
+        : [];
+
+    openModal(`
+
+      <h2>
+        💗 Pagos de Kelly
+      </h2>
+
+
+      <p class="intro">
+
+        Toca un pago para revisar
+        todos sus datos y comprobante.
+
+      </p>
+
+
+      <div class="history">
+
+        ${
+          payments.length
+
+            ?
+
+          payments
+            .slice()
+            .reverse()
+            .map(p => `
+
+              <div
+                class="history-row"
+              >
+
+                <div class="left">
+
+                  <b>
+                    ${money(p.amount)}
+                  </b>
+
+                  <small>
+
+                    ${esc(
+                      formatDate(p.date)
+                    )}
+
+                    ${
+                      p.method
+                        ? ` · ${esc(p.method)}`
+                        : ""
+                    }
+
+                  </small>
+
+                  ${
+                    p.note
+                      ? `
+                        <small>
+                          ${esc(p.note)}
+                        </small>
+                      `
+                      : ""
+                  }
+
+                </div>
+
+
+                <button
+                  class="secondary"
+                  type="button"
+                  data-kelly-payment-detail="${esc(p.id)}"
+                >
+                  Ver detalle →
+                </button>
+
+              </div>
+
+            `)
+            .join("")
+
+            :
+
+          `
+            <div class="empty">
+
+              Todavía no hay pagos
+              registrados para Kelly.
+
+            </div>
+          `
+        }
+
+      </div>
+
+    `,{
+      type:"kellyHistory"
+    });
+  }
+
+
+  // ============================================================
+  // DETALLE DE PAGO DE KELLY
+  // ============================================================
+
+  function openKellyPaymentDetail(
+    paymentId
+  ){
+
+    const payment =
+      state.kelly.payments.find(
+        p =>
+          p.id === paymentId
+      );
+
+    if(!payment){
+
+      return toast(
+        "No se encontró ese pago."
+      );
+    }
+
+    const receipt =
+      payment.receiptUrl ||
+      payment.receiptData ||
+      "";
+
+    openModal(`
+
+      <div class="receipt-detail">
+
+        <button
+          class="secondary"
+          id="backToKellyHistory"
+          type="button"
+        >
+          ← Volver a pagos
+        </button>
+
+
+        <h2>
+          💗 Detalle del pago
+        </h2>
+
+
+        <p class="intro">
+          Pago registrado para Kelly
+        </p>
+
+
+        <div class="readonly-box">
+
+          <div style="margin-bottom:8px">
+
+            <small>
+              Monto
+            </small>
+
+            <br>
+
+            <strong>
+              ${money(payment.amount)}
+            </strong>
+
+          </div>
+
+
+          <div style="margin-bottom:8px">
+
+            <small>
+              Fecha
+            </small>
+
+            <br>
+
+            <strong>
+              ${esc(formatDate(payment.date))}
+            </strong>
+
+          </div>
+
+
+          <div style="margin-bottom:8px">
+
+            <small>
+              Método
+            </small>
+
+            <br>
+
+            <strong>
+              ${
+                esc(
+                  payment.method ||
+                  "No indicado"
+                )
+              }
+            </strong>
+
+          </div>
+
+
+          ${
+            payment.note
+              ? `
+                <div>
+
+                  <small>
+                    Nota
+                  </small>
+
+                  <br>
+
+                  <strong>
+                    ${esc(payment.note)}
+                  </strong>
+
+                </div>
+              `
+              : ""
+          }
+
+        </div>
+
+
+        ${
+          receipt
+            ? `
+              <div style="margin-top:16px">
+
+                <p
+                  class="tiny"
+                  style="margin-bottom:8px"
+                >
+                  Comprobante
+                </p>
+
+                <img
+                  class="photo-modal-preview"
+                  src="${esc(receipt)}"
+                  alt="Comprobante del pago de Kelly"
+                >
+
+              </div>
+            `
+            : `
+              <div class="empty">
+
+                Este pago no tiene
+                comprobante asociado.
+
+              </div>
+            `
+        }
+
+      </div>
+
+    `,{
+      type:"kellyPaymentDetail",
+      paymentId
+    });
+
+    $("#backToKellyHistory")?.addEventListener(
+      "click",
+      openKellyHistory
+    );
   }
 
 
@@ -3813,7 +4030,10 @@
   // VER COMPROBANTE
   // ============================================================
 
-  function openReceipt(src){
+  function openReceipt(
+    src,
+    detail={}
+  ){
 
     if(!src){
 
@@ -3822,21 +4042,193 @@
       );
     }
 
+    let backLabel =
+      "← Volver";
+
+    if(
+      detail.backType ===
+      "junta"
+    ){
+
+      backLabel =
+        "← Volver a movimientos";
+
+    }else if(
+      detail.backType ===
+      "kelly"
+    ){
+
+      backLabel =
+        "← Volver a pagos";
+    }
+
 
     openModal(`
 
-      <h2>
-        📷 Comprobante
-      </h2>
+      <div class="receipt-detail">
+
+        <button
+          class="secondary"
+          id="receiptBack"
+          type="button"
+        >
+          ${backLabel}
+        </button>
 
 
-      <img
-        class="photo-modal-preview"
-        src="${esc(src)}"
-        alt="Comprobante"
-      >
+        <h2>
+          📷 Comprobante
+        </h2>
 
-    `);
+
+        ${
+          detail.amount ||
+          detail.date ||
+          detail.method ||
+          detail.note
+            ? `
+
+              <div class="readonly-box">
+
+                ${
+                  detail.amount
+                    ? `
+                      <div style="margin-bottom:8px">
+
+                        <small>
+                          Monto
+                        </small>
+
+                        <br>
+
+                        <strong>
+                          ${money(detail.amount)}
+                        </strong>
+
+                      </div>
+                    `
+                    : ""
+                }
+
+
+                ${
+                  detail.date
+                    ? `
+                      <div style="margin-bottom:8px">
+
+                        <small>
+                          Fecha
+                        </small>
+
+                        <br>
+
+                        <strong>
+                          ${esc(
+                            formatDate(
+                              detail.date
+                            )
+                          )}
+                        </strong>
+
+                      </div>
+                    `
+                    : ""
+                }
+
+
+                ${
+                  detail.method
+                    ? `
+                      <div style="margin-bottom:8px">
+
+                        <small>
+                          Método
+                        </small>
+
+                        <br>
+
+                        <strong>
+                          ${esc(detail.method)}
+                        </strong>
+
+                      </div>
+                    `
+                    : ""
+                }
+
+
+                ${
+                  detail.note
+                    ? `
+                      <div>
+
+                        <small>
+                          Nota
+                        </small>
+
+                        <br>
+
+                        <strong>
+                          ${esc(detail.note)}
+                        </strong>
+
+                      </div>
+                    `
+                    : ""
+                }
+
+              </div>
+            `
+            : ""
+        }
+
+
+        <img
+          class="photo-modal-preview"
+          src="${esc(src)}"
+          alt="Comprobante"
+        >
+
+      </div>
+
+    `,{
+      type:"receipt",
+      ...detail
+    });
+
+
+    $("#receiptBack")?.addEventListener(
+      "click",
+      () => {
+
+        if(
+          detail.backType ===
+          "junta" &&
+          detail.backId
+        ){
+
+          openJuntaHistory(
+            detail.backId
+          );
+
+          return;
+        }
+
+
+        if(
+          detail.backType ===
+          "kelly"
+        ){
+
+          openKellyHistory();
+
+          return;
+        }
+
+
+        closeModal();
+      }
+    );
   }
 
 
@@ -3852,7 +4244,6 @@
         ↗ Compartir visualización
       </h2>
 
-
       <p class="intro">
 
         Elige qué quieres mostrar.
@@ -3860,7 +4251,6 @@
         siempre fuera.
 
       </p>
-
 
       <div class="share-options">
 
@@ -3883,7 +4273,6 @@
           </small>
 
         </button>
-
 
         <button
           class="share-option"
@@ -3908,13 +4297,11 @@
       </div>
     `);
 
-
     $("#shareJuntaChoose").onclick =
       () => {
 
         const id =
           state.juntas[0]?.id;
-
 
         if(id){
 
@@ -3924,7 +4311,6 @@
           );
         }
       };
-
 
     $("#shareKellyChoose").onclick =
       () =>
@@ -3947,9 +4333,7 @@
             x.id === id
         );
 
-
       if(!j) return;
-
 
       const paid =
         j.payments.reduce(
@@ -3961,7 +4345,6 @@
           0
         );
 
-
       const pct =
         j.goal
           ? Math.min(
@@ -3972,7 +4355,6 @@
             )
           : 0;
 
-
       const receipts =
         j.payments
           .map(
@@ -3982,7 +4364,6 @@
               ""
           )
           .filter(Boolean);
-
 
       const token =
         btoa(
@@ -4004,13 +4385,11 @@
           36
         );
 
-
       openModal(`
 
         <h2>
           🌸 Compartir Junta
         </h2>
-
 
         <p class="intro">
 
@@ -4018,7 +4397,6 @@
           como solo lectura.
 
         </p>
-
 
         <div class="readonly-box">
 
@@ -4035,7 +4413,6 @@
           ${pct.toFixed(0)}%
 
         </div>
-
 
         ${
           receipts.length
@@ -4074,7 +4451,6 @@
             `
         }
 
-
         <div
           class="share-link-box"
         >
@@ -4089,7 +4465,6 @@
             )}"
           >
 
-
           <button
             class="primary"
             id="copyShare"
@@ -4100,7 +4475,6 @@
         </div>
 
       `);
-
 
       $("#copyShare").onclick =
         () =>
@@ -4119,14 +4493,12 @@
           0
         );
 
-
       const balance =
         Math.max(
           0,
           state.kelly.original -
           paid
         );
-
 
       const receipts =
         state.kelly.payments
@@ -4137,7 +4509,6 @@
               ""
           )
           .filter(Boolean);
-
 
       const token =
         btoa(
@@ -4158,13 +4529,11 @@
           36
         );
 
-
       openModal(`
 
         <h2>
           💗 Compartir Kelly
         </h2>
-
 
         <p class="intro">
 
@@ -4172,7 +4541,6 @@
           como solo lectura.
 
         </p>
-
 
         <div class="readonly-box">
 
@@ -4202,7 +4570,6 @@
 
         </div>
 
-
         ${
           receipts.length
             ? `
@@ -4240,7 +4607,6 @@
             `
         }
 
-
         <div
           class="share-link-box"
         >
@@ -4255,7 +4621,6 @@
             )}"
           >
 
-
           <button
             class="primary"
             id="copyShare"
@@ -4266,7 +4631,6 @@
         </div>
 
       `);
-
 
       $("#copyShare").onclick =
         () =>
@@ -4282,12 +4646,9 @@
         ".share-link-box input"
       );
 
-
     if(!input){
-
       return;
     }
-
 
     try{
 
@@ -4295,7 +4656,6 @@
         .writeText(
           input.value
         );
-
 
       toast(
         "Enlace copiado ↗"
@@ -4305,11 +4665,9 @@
 
       input.select();
 
-
       document.execCommand(
         "copy"
       );
-
 
       toast(
         "Enlace copiado ↗"
@@ -4334,7 +4692,6 @@
         0
       );
 
-
     const balance =
       Math.max(
         0,
@@ -4342,13 +4699,11 @@
         paid
       );
 
-
     openModal(`
 
       <h2>
         🔔 Recordatorios
       </h2>
-
 
       <p class="intro">
 
@@ -4356,7 +4711,6 @@
         se te pase nada.
 
       </p>
-
 
       <div class="list">
 
@@ -4367,7 +4721,6 @@
             <b>
               Kelly
             </b>
-
 
             <small>
 
@@ -4381,13 +4734,11 @@
 
           </div>
 
-
           <span>
             💗
           </span>
 
         </div>
-
 
         <div class="list-row">
 
@@ -4396,7 +4747,6 @@
             <b>
               Juntas
             </b>
-
 
             <small>
 
@@ -4407,7 +4757,6 @@
 
           </div>
 
-
           <span>
             🌸
           </span>
@@ -4416,13 +4765,11 @@
 
       </div>
 
-
       <div class="kelly-reminder">
 
         <strong>
           Recordatorio mensual:
         </strong>
-
 
         Kelly no tiene fecha límite.
         Mi Juntita te avisará al menos
@@ -4433,13 +4780,11 @@
 
     `);
 
-
     $("#notifyBtn")
       ?.classList
       .remove(
         "has-notif"
       );
-
 
     const notifDot =
       $("#notifDot");
@@ -4463,10 +4808,8 @@
     const now =
       new Date();
 
-
     const monthKey =
       `${now.getFullYear()}-${now.getMonth()+1}`;
-
 
     if(
 
@@ -4489,9 +4832,7 @@
       state.lastKellyReminder =
         monthKey;
 
-
       save();
-
 
       setTimeout(() => {
 
@@ -4500,7 +4841,6 @@
           .add(
             "has-notif"
           );
-
 
         toast(
           "🔔 Recuerda revisar si corresponde hacer un pago a Kelly."
@@ -4523,14 +4863,12 @@
         🌸 Nueva Junta
       </h2>
 
-
       <p class="intro">
 
         Crea otra meta
         sin complicarla.
 
       </p>
-
 
       <div class="form-grid">
 
@@ -4546,14 +4884,12 @@
 
           </label>
 
-
           <input
             id="name"
             placeholder="Junta Navidad"
           >
 
         </div>
-
 
         <div class="field">
 
@@ -4567,7 +4903,6 @@
 
           </label>
 
-
           <input
             id="goal"
             type="number"
@@ -4577,13 +4912,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Aporte normal
           </label>
-
 
           <input
             id="normal"
@@ -4594,13 +4927,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             Modalidad
           </label>
-
 
           <select id="modality">
 
@@ -4614,13 +4945,11 @@
 
         </div>
 
-
         <div class="field">
 
           <label>
             ¿Puede variar?
           </label>
-
 
           <select id="variable">
 
@@ -4638,7 +4967,6 @@
 
       </div>
 
-
       <div class="form-actions">
 
         <button
@@ -4647,7 +4975,6 @@
         >
           Cancelar
         </button>
-
 
         <button
           class="primary"
@@ -4660,10 +4987,8 @@
 
     `);
 
-
     $("#cancelForm").onclick =
       closeModal;
-
 
     $("#createJunta").onclick =
       async () => {
@@ -4673,12 +4998,10 @@
             .value
             .trim();
 
-
         const goal =
           Number(
             $("#goal").value
           );
-
 
         if(
           !name ||
@@ -4689,7 +5012,6 @@
             "Completa el nombre y la meta."
           );
         }
-
 
         const junta = {
 
@@ -4715,32 +5037,24 @@
           payments:[]
         };
 
-
         const savedJunta =
           await apiCreateJunta(
             junta
           );
 
-
         if(!savedJunta){
-
           return;
         }
-
 
         state.juntas.push(
           junta
         );
 
-
         save();
-
 
         closeModal();
 
-
         render();
-
 
         toast(
           "Nueva Junta guardada 🌸"
@@ -4761,7 +5075,6 @@
         ⚙️ Configuración
       </h2>
 
-
       <p class="intro">
 
         Juntas, aportes de juntas,
@@ -4773,7 +5086,6 @@
 
       </p>
 
-
       <div class="list">
 
         <div class="list-row">
@@ -4783,7 +5095,6 @@
             <b>
               Modo
             </b>
-
 
             <small>
 
@@ -4797,7 +5108,6 @@
 
           </div>
 
-
           <button
             class="secondary"
             id="settingsTheme"
@@ -4807,7 +5117,6 @@
 
         </div>
 
-
         <div class="list-row">
 
           <div class="left">
@@ -4815,7 +5124,6 @@
             <b>
               Datos
             </b>
-
 
             <small>
 
@@ -4826,7 +5134,6 @@
             </small>
 
           </div>
-
 
           <button
             class="secondary"
@@ -4841,7 +5148,6 @@
 
     `);
 
-
     $("#settingsTheme").onclick =
       () => {
 
@@ -4849,7 +5155,6 @@
 
         toggleTheme();
       };
-
 
     $("#exportData").onclick =
       () => {
@@ -4869,25 +5174,20 @@
             }
           );
 
-
         const a =
           document.createElement(
             "a"
           );
-
 
         a.href =
           URL.createObjectURL(
             blob
           );
 
-
         a.download =
           "mi-juntita-respaldo.json";
 
-
         a.click();
-
 
         toast(
           "Respaldo descargado ♡"
@@ -4912,25 +5212,20 @@
       return;
     }
 
-
     const el =
       document.createElement(
         "div"
       );
 
-
     el.className =
       "toast";
-
 
     el.textContent =
       msg;
 
-
     wrap.appendChild(
       el
     );
-
 
     setTimeout(
       () =>
