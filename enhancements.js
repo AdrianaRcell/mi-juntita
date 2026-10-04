@@ -1517,8 +1517,19 @@
       confirmDeletePayment.textContent = "Eliminando…";
 
       try {
-        const payload = { paymentId };
-        if (ctx.type === "junta") payload.juntaId = ctx.parentId || "";
+        const payload = {
+  paymentId
+};
+
+if (ctx.type === "junta") {
+  payload.juntaId = ctx.parentId || "";
+} else {
+  payload.amount = Number(payment.amount || 0);
+  payload.date = payment.date || "";
+  payload.method = payment.method || "";
+  payload.note = payment.note || "";
+  payload.receiptUrl = payment.receiptUrl || "";
+}
 
         const response = await fetch(endpoint, {
           method: "POST",
