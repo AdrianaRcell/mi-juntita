@@ -13,6 +13,7 @@
   let lastSaved = null;
   let gridObserver = null;
   let currentDetailContext = null;
+  let lastStarSignature = "";
 
   // ============================================================
   // JUNTAS COMPLETADAS
@@ -26,6 +27,8 @@
   const TEST_ARCHIVE_MS = 2 * 60 * 1000;
   const REAL_ARCHIVE_MS = 14 * 24 * 60 * 60 * 1000;
 
+  // 🧪 PRUEBA ACTUAL: 2 minutos.
+  // Cuando terminemos las pruebas, cambia esta línea por REAL_ARCHIVE_MS.
   const ARCHIVE_DURATION_MS = TEST_ARCHIVE_MS;
 
   let archiveCleanupTimer = null;
@@ -498,12 +501,6 @@
           <div class="sub">Deuda · sin fecha límite</div>
         </div>
 
-        <button
-          class="more"
-          type="button"
-          data-kelly-history-enhanced="true"
-          title="Ver pagos de Kelly"
-        >⋯</button>
       </div>
 
       <div class="money mj-kelly-money">
@@ -531,6 +528,9 @@
         <button class="primary" type="button" data-kelly-add-enhanced="true">
           💗 Registrar pago
         </button>
+        <button class="secondary mj-card-history-btn" type="button" data-kelly-history-enhanced="true">
+          📋 Historial
+        </button>
         <button class="secondary" type="button" data-kelly-share-enhanced="true">
           ↗ Compartir
         </button>
@@ -540,12 +540,70 @@
     return article;
   }
 
+  function prepareJuntaCard(card, junta) {
+    if (!card || !junta) return;
+
+    const oldMore = card.querySelector("[data-junta-history]");
+    if (oldMore) oldMore.remove();
+
+    const actions = card.querySelector(".card-actions");
+    if (!actions) return;
+
+    if (!actions.querySelector("[data-mj-history-button]")) {
+      const history = document.createElement("button");
+      history.className = "secondary mj-card-history-btn";
+      history.type = "button";
+      history.dataset.juntaHistory = junta.id;
+      history.dataset.mjHistoryButton = "true";
+      history.textContent = "📋 Historial";
+
+      const share = actions.querySelector("[data-share-junta]");
+      if (share) {
+        actions.insertBefore(history, share);
+      } else {
+        actions.appendChild(history);
+      }
+    }
+  }
+
+  function hideLegacyKellyQuickAction() {
+    const legacy = $(".kelly-action");
+    if (!legacy) return;
+    legacy.hidden = true;
+    legacy.setAttribute("aria-hidden", "true");
+  }
+
+  function playNewPaymentStars(type = "junta") {
+    const layer = $("#celebrationLayer");
+    if (!layer) return;
+
+    const symbols = type === "kelly"
+      ? ["✦", "💗", "✨", "♡", "✦"]
+      : ["✦", "✧", "🌸", "✨", "★"];
+
+    for (let i = 0; i < 14; i++) {
+      const star = document.createElement("span");
+      star.className = "mj-payment-star";
+      star.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+      star.style.setProperty("--mj-star-x", `${(Math.random() - .5) * 72}vw`);
+      star.style.setProperty("--mj-star-y", `${(Math.random() - .5) * 58}vh`);
+      star.style.setProperty("--mj-star-r", `${(Math.random() - .5) * 70}deg`);
+      star.style.setProperty("--mj-star-scale", `${.72 + Math.random() * .62}`);
+      star.style.setProperty("--mj-star-delay", `${Math.random() * .16}s`);
+      layer.appendChild(star);
+
+      setTimeout(() => star.remove(), 1500);
+    }
+  }
+
   function enhanceMain() {
     if (sharedMode || structuring) return;
 
     const state = getState();
     const grid = $("#juntasGrid");
     if (!state || !grid) return;
+
+    hideLegacyKellyQuickAction();
 
     // Este observer vigila cambios hechos por la app principal.
     // Como aquí reconstruimos #juntasGrid a propósito, lo
@@ -588,6 +646,8 @@
     for (const card of juntaCards) {
       const juntaId = card.dataset.juntaCard || "";
       const junta = (state.juntas || []).find(j => j.id === juntaId);
+
+      prepareJuntaCard(card, junta);
 
       if (
         junta &&
@@ -635,6 +695,20 @@
 
     grid.appendChild(savings);
     grid.appendChild(debts);
+
+    if (lastSaved) {
+      const starSignature = [
+        lastSaved.type,
+        lastSaved.parentId || "",
+        lastSaved.paymentId || ""
+      ].join(":");
+
+      if (starSignature !== lastStarSignature) {
+        lastStarSignature = starSignature;
+        const savedType = lastSaved.type;
+        requestAnimationFrame(() => playNewPaymentStars(savedType));
+      }
+    }
 
     if (lastSaved) {
       const savedSnapshot = lastSaved;
