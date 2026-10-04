@@ -1,18 +1,33 @@
 import sql from "./db.js";
 
-export default async function handler(request, response) {
+export default async function handler(req, res) {
   try {
-    if (request.method === "GET") {
-      const juntaId = request.query?.junta_id;
+    if (req.method === "GET") {
+      const juntaId = req.query?.junta_id;
 
-      if (!juntaId) {
-        return response.status(400).json({
-          ok: false,
-          error: "Falta junta_id"
+      if (juntaId) {
+        const rows = await sql`
+          SELECT
+            id,
+            junta_id,
+            amount,
+            payment_date,
+            method,
+            note,
+            receipt_url,
+            created_at
+          FROM junta_payments
+          WHERE junta_id = ${juntaId}
+          ORDER BY payment_date DESC, created_at DESC
+        `;
+
+        return res.status(200).json({
+          ok: true,
+          payments: rows
         });
       }
 
-      const payments = await sql`
+      const rows = await sql`
         SELECT
           id,
           junta_id,
@@ -23,17 +38,16 @@ export default async function handler(request, response) {
           receipt_url,
           created_at
         FROM junta_payments
-        WHERE junta_id = ${juntaId}
-        ORDER BY payment_date ASC, created_at ASC
+        ORDER BY payment_date DESC, created_at DESC
       `;
 
-      return response.status(200).json({
+      return res.status(200).json({
         ok: true,
-        payments
+        payments: rows
       });
     }
 
-    if (request.method === "POST") {
+    if (req.method === "POST") {
       const {
         id,
         junta_id,
@@ -42,16 +56,16 @@ export default async function handler(request, response) {
         method,
         note,
         receipt_url
-      } = request.body || {};
+      } = req.body || {};
 
-      if (!id || !junta_id || !amount || !payment_date) {
-        return response.status(400).json({
+      if (!id || !junta_id || !payment_date) {
+        return res.status(400).json({
           ok: false,
           error: "Faltan datos del pago"
         });
       }
 
-      const result = await sql`
+      const rows = await sql`
         INSERT INTO junta_payments (
           id,
           junta_id,
@@ -64,32 +78,47 @@ export default async function handler(request, response) {
         VALUES (
           ${id},
           ${junta_id},
-          ${Number(amount)},
+          ${Number(amount) || 0},
           ${payment_date},
           ${method || ""},
           ${note || ""},
           ${receipt_url || ""}
         )
-        RETURNING *
+        ON CONFLICT (id)
+        DO UPDATE SET
+          amount = EXCLUDED.amount,
+          payment_date = EXCLUDED.payment_date,
+          method = EXCLUDED.method,
+          note = EXCLUDED.note,
+          receipt_url = EXCLUDED.receipt_url
+        RETURNING
+          id,
+          junta_id,
+          amount,
+          payment_date,
+          method,
+          note,
+          receipt_url,
+          created_at
       `;
 
-      return response.status(201).json({
+      return res.status(200).json({
         ok: true,
-        payment: result[0]
+        payment: rows[0]
       });
     }
 
-    return response.status(405).json({
+    return res.status(405).json({
       ok: false,
       error: "Método no permitido"
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Error en junta-payments:", error);
 
-    return response.status(500).json({
+    return res.status(500).json({
       ok: false,
-      error: "No se pudieron procesar los pagos"
+      error: "Error al trabajar con los pagos"
     });
   }
 }
