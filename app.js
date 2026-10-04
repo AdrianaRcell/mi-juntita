@@ -50,20 +50,13 @@
       phraseIndex: 0,
 
       juntas: [{
-        id:"junta_default",
-        name:"Junta",
-        goal:3000,
-        normal:250,
-        modality:"quincenal",
-        variable:true,
-        payments:[{
-          id:uid("pay"),
-          amount:300,
-          date:today(),
-          method:"",
-          note:"Aporte inicial",
-          receiptData:""
-        }]
+  id:"junta_default",
+  name:"Junta",
+  goal:3000,
+  normal:250,
+  modality:"quincenal",
+  variable:true,
+  payments:[]
       }],
 
       kelly:{
