@@ -7,8 +7,7 @@ const APP_SHELL = [
   "./app.js",
   "./share-guard.js",
   "./enhancements.js",
-  "./manifest.webmanifest",
-  "./icon.svg"
+  "./manifest.webmanifest"
 ];
 
 self.addEventListener("install", (event) => {
