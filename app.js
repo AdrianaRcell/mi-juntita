@@ -215,7 +215,45 @@
     }
   }
 
+  // ============================================================
+  // API — OBTENER APORTES DE UNA JUNTA
+  // ============================================================
 
+  async function apiGetJuntaPayments(juntaId){
+
+    try{
+
+      const response =
+        await fetch(
+          `/api/junta-payments?junta_id=${encodeURIComponent(juntaId)}`
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if(!data.ok){
+
+        throw new Error(
+          data.error ||
+          "No se pudieron cargar los aportes"
+        );
+      }
+
+
+      return data.payments || [];
+
+    }catch(error){
+
+      console.error(
+        "Error cargando aportes:",
+        error
+      );
+
+      return null;
+    }
+  }
   // ============================================================
   // API — CREAR APORTE DE JUNTA
   // ============================================================
@@ -312,7 +350,301 @@
 
       return true;
     }
+  // ============================================================
+  // SINCRONIZAR JUNTAS Y APORTES CON NEON
+  // ============================================================
 
+  async function syncCloudData(){
+
+    try{
+
+      /*
+        Primero obtenemos las juntas que existen
+        actualmente en Neon.
+      */
+
+      let cloudJuntas =
+        await apiGetJuntas();
+
+
+      /*
+        Si Neon no responde, no tocamos los datos
+        locales. La aplicación puede seguir funcionando.
+      */
+
+      if(cloudJuntas === null){
+
+        return;
+      }
+
+
+      /*
+        Si hay juntas locales que todavía no existen
+        en Neon, las subimos.
+      */
+
+      for(const localJunta of state.juntas){
+
+        const exists =
+          cloudJuntas.some(
+            cloudJunta =>
+              cloudJunta.id === localJunta.id
+          );
+
+
+        if(!exists){
+
+          await apiCreateJunta(
+            localJunta
+          );
+        }
+      }
+
+
+      /*
+        Volvemos a leer Neon después de subir
+        las juntas que faltaban.
+      */
+
+      cloudJuntas =
+        await apiGetJuntas();
+
+
+      if(cloudJuntas === null){
+
+        return;
+      }
+
+
+      const mergedJuntas = [];
+
+
+      /*
+        Recorremos todas las juntas que existen
+        en Neon.
+      */
+
+      for(const cloudJunta of cloudJuntas){
+
+        const localJunta =
+          state.juntas.find(
+            j =>
+              j.id === cloudJunta.id
+          );
+
+
+        /*
+          Obtenemos los aportes guardados
+          en Neon para esta junta.
+        */
+
+        const cloudPayments =
+          await apiGetJuntaPayments(
+            cloudJunta.id
+          );
+
+
+        if(cloudPayments === null){
+
+          /*
+            Si una junta no puede cargar sus pagos,
+            conservamos sus datos locales.
+          */
+
+          if(localJunta){
+
+            mergedJuntas.push(
+              localJunta
+            );
+
+          }
+
+          continue;
+        }
+
+
+        /*
+          Empezamos con los pagos de Neon.
+        */
+
+        const paymentsById =
+          new Map();
+
+
+        cloudPayments.forEach(
+          payment => {
+
+            paymentsById.set(
+              payment.id,
+              {
+                id:payment.id,
+                amount:Number(
+                  payment.amount || 0
+                ),
+                date:
+                  String(
+                    payment.payment_date ||
+                    ""
+                  ).slice(0,10),
+                method:
+                  payment.method || "",
+                note:
+                  payment.note || "",
+                receiptData:
+                  localJunta?.payments?.find(
+                    p =>
+                      p.id === payment.id
+                  )?.receiptData || ""
+              }
+            );
+
+          }
+        );
+
+
+        /*
+          Si existe algún aporte local que todavía
+          no está en Neon, intentamos subirlo.
+        */
+
+        if(localJunta){
+
+          for(
+            const localPayment
+            of (localJunta.payments || [])
+          ){
+
+            if(
+              paymentsById.has(
+                localPayment.id
+              )
+            ){
+
+              continue;
+            }
+
+
+            const uploaded =
+              await apiCreateJuntaPayment(
+                localPayment
+              );
+
+
+            if(uploaded){
+
+              paymentsById.set(
+                uploaded.id,
+                {
+                  id:uploaded.id,
+                  amount:Number(
+                    uploaded.amount || 0
+                  ),
+                  date:
+                    String(
+                      uploaded.payment_date ||
+                      localPayment.date ||
+                      ""
+                    ).slice(0,10),
+                  method:
+                    uploaded.method ||
+                    localPayment.method ||
+                    "",
+                  note:
+                    uploaded.note ||
+                    localPayment.note ||
+                    "",
+                  receiptData:
+                    localPayment.receiptData ||
+                    ""
+                }
+              );
+            }
+
+          }
+        }
+
+
+        /*
+          Convertimos el Map nuevamente
+          en un arreglo de pagos.
+        */
+
+        const payments =
+          Array.from(
+            paymentsById.values()
+          );
+
+
+        /*
+          La información general de la junta
+          viene de Neon.
+        */
+
+        mergedJuntas.push({
+
+          id:
+            cloudJunta.id,
+
+          name:
+            cloudJunta.name,
+
+          goal:
+            Number(
+              cloudJunta.goal || 0
+            ),
+
+          normal:
+            Number(
+              cloudJunta.normal || 0
+            ),
+
+          modality:
+            cloudJunta.modality ||
+            "quincenal",
+
+          variable:
+            Boolean(
+              cloudJunta.variable
+            ),
+
+          payments
+
+        });
+      }
+
+
+      /*
+        Si Neon tiene datos válidos, actualizamos
+        la memoria local con la información sincronizada.
+      */
+
+      if(mergedJuntas.length){
+
+        state.juntas =
+          mergedJuntas;
+
+
+        save();
+      }
+
+
+      console.log(
+        "Mi Juntita: sincronización con Neon completada."
+      );
+
+    }catch(error){
+
+      /*
+        Un problema de sincronización no debe
+        impedir que la aplicación abra.
+      */
+
+      console.error(
+        "Error sincronizando con Neon:",
+        error
+      );
+    }
+  }
 
     if(
       state.migrations?.defaultJuntaCloud
@@ -500,9 +832,31 @@
   // INICIO
   // ============================================================
 
-  async function init(){
+    async function init(){
 
     applyTheme();
+
+
+    /*
+      Primero aseguramos que la junta principal
+      exista en Neon.
+    */
+
+    await ensureDefaultJuntaCloud();
+
+
+    /*
+      Después sincronizamos juntas y aportes
+      desde Neon.
+    */
+
+    await syncCloudData();
+
+
+    /*
+      Finalmente mostramos la información
+      ya sincronizada.
+    */
 
     render();
 
@@ -511,14 +865,6 @@
     rotatePhrase(false);
 
     maybeKellyReminder();
-
-    /*
-      Aseguramos que la junta principal
-      exista también en Neon antes
-      de registrar pagos.
-    */
-
-    await ensureDefaultJuntaCloud();
   }
 
 
