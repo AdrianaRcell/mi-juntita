@@ -1,18 +1,19 @@
 {
   "name": "Mi Juntita",
-  "short_name": "Juntita",
+  "short_name": "Mi Juntita",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#fbf4fa",
-  "theme_color": "#f7eef8",
+  "background_color": "#f7eef8",
+  "theme_color": "#e99fbe",
+  "description": "Tus juntitas, ahorros, deudas y comprobantes en un solo lugar.",
   "lang": "es",
-  "description": "Mi Juntita, una aplicación para organizar y administrar tus juntas.",
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
