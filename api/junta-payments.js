@@ -3,71 +3,79 @@ import sql from "./db.js";
 export default async function handler(request, response) {
   try {
     if (request.method === "GET") {
-      const juntas = await sql`
+      const juntaId = request.query?.junta_id;
+
+      if (!juntaId) {
+        return response.status(400).json({
+          ok: false,
+          error: "Falta junta_id"
+        });
+      }
+
+      const payments = await sql`
         SELECT
           id,
-          name,
-          goal,
-          normal,
-          modality,
-          variable,
+          junta_id,
+          amount,
+          payment_date,
+          method,
+          note,
+          receipt_url,
           created_at
-        FROM juntas
-        ORDER BY created_at ASC
+        FROM junta_payments
+        WHERE junta_id = ${juntaId}
+        ORDER BY payment_date ASC, created_at ASC
       `;
 
       return response.status(200).json({
         ok: true,
-        juntas
+        payments
       });
     }
 
     if (request.method === "POST") {
       const {
         id,
-        name,
-        goal,
-        normal,
-        modality,
-        variable
+        junta_id,
+        amount,
+        payment_date,
+        method,
+        note,
+        receipt_url
       } = request.body || {};
 
-      if (!id || !name) {
+      if (!id || !junta_id || !amount || !payment_date) {
         return response.status(400).json({
           ok: false,
-          error: "Faltan datos de la junta"
+          error: "Faltan datos del pago"
         });
       }
 
       const result = await sql`
-        INSERT INTO juntas (
+        INSERT INTO junta_payments (
           id,
-          name,
-          goal,
-          normal,
-          modality,
-          variable
+          junta_id,
+          amount,
+          payment_date,
+          method,
+          note,
+          receipt_url
         )
         VALUES (
           ${id},
-          ${name},
-          ${Number(goal) || 0},
-          ${Number(normal) || 0},
-          ${modality || "quincenal"},
-          ${variable !== false}
+          ${junta_id},
+          ${Number(amount)},
+          ${payment_date},
+          ${method || ""},
+          ${note || ""},
+          ${receipt_url || ""}
         )
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          goal = EXCLUDED.goal,
-          normal = EXCLUDED.normal,
-          modality = EXCLUDED.modality,
-          variable = EXCLUDED.variable
         RETURNING *
       `;
 
       return response.status(201).json({
         ok: true,
-        junta: result[0]
+        payment: result[0]
       });
     }
 
@@ -81,7 +89,7 @@ export default async function handler(request, response) {
 
     return response.status(500).json({
       ok: false,
-      error: "No se pudieron procesar las juntas"
+      error: "No se pudieron procesar los pagos"
     });
   }
 }
