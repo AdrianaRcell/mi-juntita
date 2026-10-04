@@ -1209,3 +1209,70 @@ html.mj-shared-mode-pending .toast-wrap{
   .card-actions{flex-wrap:wrap}
   .card-actions > button{flex:1 1 auto}
 }
+
+/* ============================================================
+   ACTUALIZAR DATOS
+   ============================================================ */
+.mj-refresh-btn{
+  position:relative;
+}
+.mj-refresh-btn:disabled{
+  opacity:.7;
+  cursor:wait;
+}
+.mj-refresh-btn.mj-refreshing{
+  animation:mjRefreshSpin .65s linear infinite;
+}
+@keyframes mjRefreshSpin{
+  to{transform:rotate(360deg)}
+}
+
+
+/* La vista compartida es de solo lectura y no muestra toasts de la sesión propietaria. */
+html.mj-shared-mode .toast-wrap{display:none!important}
+
+
+/* ============================================================
+   RECORDATORIOS + MODO PRUEBA
+   ============================================================ */
+.mj-reminder-card{text-align:center}
+.mj-reminder-icon{font-size:42px;margin-bottom:8px;animation:mjReminderFloat 1.8s ease-in-out infinite}
+.mj-reminder-choice-list{display:grid;gap:10px;margin-top:18px}
+.mj-reminder-choice{display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--text);text-align:left;cursor:pointer;transition:transform .2s var(--ease),box-shadow .25s,background .3s}
+.mj-reminder-choice:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(70,50,80,.09)}
+.mj-reminder-choice:active{transform:scale(.98)}
+.mj-reminder-choice > span{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:color-mix(in srgb,var(--pink2) 52%,transparent);font-size:20px;flex:none}
+.mj-reminder-choice b{display:block;font-size:13px}
+.mj-reminder-choice small{display:block;color:var(--muted);font-size:10px;line-height:1.35;margin-top:2px}
+.mj-reminder-yes > span{background:color-mix(in srgb,var(--green) 30%,transparent)}
+.mj-reminder-no > span{background:color-mix(in srgb,var(--pink2) 55%,transparent)}
+@keyframes mjReminderFloat{50%{transform:translateY(-5px) rotate(3deg)}}
+.mj-test-badge{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:70;padding:9px 13px;border-radius:999px;background:#46354d;color:#fff;font:700 11px/1 ui-rounded,system-ui,sans-serif;box-shadow:0 8px 25px rgba(30,20,40,.18);pointer-events:none}
+html.mj-test-mode .mj-test-badge{display:block}
+html:not(.mj-test-mode) .mj-test-badge{display:none}
+@media(prefers-reduced-motion:reduce){.mj-reminder-icon{animation:none}}
+
+
+/* Eliminación segura de pagos de Kelly */
+.mj-delete-zone{
+  margin-top:20px;padding:14px;border-radius:16px;
+  background:color-mix(in srgb,#c75c88 8%,var(--card-solid));
+  border:1px solid color-mix(in srgb,#c75c88 22%,var(--line));
+  display:grid;gap:7px;
+}
+.mj-delete-zone small,.mj-confirm-note{color:var(--muted);font-size:10px}
+.mj-danger-btn{
+  border:1px solid color-mix(in srgb,#c75c88 55%,var(--line));
+  background:color-mix(in srgb,#c75c88 10%,var(--card-solid));
+  color:#a7436d;border-radius:14px;padding:11px 13px;
+  cursor:pointer;font-weight:750;transition:transform .18s var(--ease),filter .2s;
+}
+.mj-danger-btn:hover{filter:brightness(.98);transform:translateY(-1px)}
+.mj-danger-btn:active{transform:translateY(2px) scale(.98)}
+.mj-danger-btn:disabled{opacity:.6;cursor:wait;transform:none}
+.mj-confirm-shell{text-align:center;padding:6px 2px 2px}
+.mj-confirm-icon{font-size:38px;margin:2px auto 10px}
+.mj-confirm-shell h2{margin-bottom:8px}
+.mj-confirm-note{margin-top:12px;padding:10px;border-radius:12px;background:color-mix(in srgb,var(--pink2) 24%,transparent)}
+.mj-confirm-actions{margin-top:18px}
+.mj-danger-confirm{min-width:125px}
