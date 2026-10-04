@@ -36,11 +36,8 @@ export async function POST(request) {
 
     let payment = null;
 
-    // ============================================================
-    // 1. Intentar por ID directo
-    // ============================================================
-
-    if (paymentId !== null && String(paymentId).trim() !== "") {
+    // 1. Intentar encontrarlo por ID.
+    if (String(paymentId).trim() !== "") {
       const byId = await sql`
         SELECT
           id,
@@ -50,7 +47,7 @@ export async function POST(request) {
           note,
           receipt_url
         FROM kelly_payments
-        WHERE CAST(id AS TEXT) = CAST(${String(paymentId)} AS TEXT)
+        WHERE CAST(id AS TEXT) = ${String(paymentId)}
         LIMIT 1
       `;
 
@@ -59,10 +56,8 @@ export async function POST(request) {
       }
     }
 
-    // ============================================================
-    // 2. Si el ID no coincide, buscar por comprobante
-    // ============================================================
-
+    // 2. Si el ID local no coincide con Neon,
+    //    intentar por comprobante.
     if (!payment && receiptUrl) {
       const byReceipt = await sql`
         SELECT
@@ -82,10 +77,7 @@ export async function POST(request) {
       }
     }
 
-    // ============================================================
-    // 3. Último recurso: buscar por datos exactos del pago
-    // ============================================================
-
+    // 3. Último recurso: buscar por los datos del pago.
     if (!payment && amount > 0 && date) {
       const matches = await sql`
         SELECT
@@ -120,25 +112,18 @@ export async function POST(request) {
       }
     }
 
-    // ============================================================
-    // 4. No encontrado
-    // ============================================================
-
     if (!payment) {
       return json(
         {
           ok: false,
           error:
-            "No se encontró el pago en Neon. El registro puede usar un ID diferente al de la aplicación.",
+            "No se encontró el pago en Neon. El movimiento no coincide con ningún registro real.",
         },
         404
       );
     }
 
-    // ============================================================
-    // 5. BORRAR EL REGISTRO REAL DE NEON
-    // ============================================================
-
+    // 4. ELIMINAR EL REGISTRO REAL DE NEON.
     const deleted = await sql`
       DELETE FROM kelly_payments
       WHERE id = ${payment.id}
@@ -163,10 +148,7 @@ export async function POST(request) {
 
     const deletedPayment = deleted[0];
 
-    // ============================================================
-    // 6. BORRAR COMPROBANTE DE VERCEL BLOB
-    // ============================================================
-
+    // 5. Eliminar el comprobante de Blob.
     let receiptDeleted = true;
 
     if (deletedPayment.receipt_url) {
@@ -182,10 +164,7 @@ export async function POST(request) {
       }
     }
 
-    // ============================================================
-    // 7. RECALCULAR KELLY DESDE NEON
-    // ============================================================
-
+    // 6. Recalcular Kelly desde Neon.
     const kellyRows = await sql`
       SELECT
         id,
@@ -198,7 +177,7 @@ export async function POST(request) {
       kellyRows[0]?.original ?? 2800
     );
 
-    const remaining = await sql`
+    const remainingPayments = await sql`
       SELECT
         id,
         amount,
@@ -210,7 +189,7 @@ export async function POST(request) {
       ORDER BY date DESC, id DESC
     `;
 
-    const paid = remaining.reduce(
+    const paid = remainingPayments.reduce(
       (sum, row) => sum + Number(row.amount || 0),
       0
     );
@@ -224,7 +203,9 @@ export async function POST(request) {
       ok: true,
 
       deletedPaymentId: deletedPayment.id,
-      deletedAmount: Number(deletedPayment.amount || 0),
+      deletedAmount: Number(
+        deletedPayment.amount || 0
+      ),
 
       receiptDeleted,
 
@@ -232,7 +213,7 @@ export async function POST(request) {
         original,
         paid,
         balance,
-        payments: remaining,
+        payments: remainingPayments,
       },
     });
 
