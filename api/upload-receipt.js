@@ -1,101 +1,59 @@
 import { put } from "@vercel/blob";
 
-export const config = {
-  runtime: "edge",
-};
-
-export default async function handler(request) {
-  if (request.method !== "POST") {
-    return new Response(
-      JSON.stringify({
-        error: "Método no permitido",
-      }),
-      {
-        status: 405,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-  }
-
+export async function POST(request) {
   try {
     const formData = await request.formData();
 
     const file = formData.get("file");
 
     if (!file || typeof file.arrayBuffer !== "function") {
-      return new Response(
-        JSON.stringify({
+      return Response.json(
+        {
           error: "No se recibió ningún archivo.",
-        }),
+        },
         {
           status: 400,
-          headers: {
-            "Content-Type": "application/json",
-          },
         }
       );
     }
 
     const originalName =
-      typeof file.name === "string" && file.name
-        ? file.name
+      typeof file.name === "string" && file.name.trim()
+        ? file.name.trim()
         : "comprobante.jpg";
 
     const safeName = originalName
       .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .slice(-120);
-
-    const extension =
-      safeName.includes(".")
-        ? safeName.split(".").pop().toLowerCase()
-        : "jpg";
-
-    const finalName =
-      `mi-juntita/comprobantes/` +
-      `${Date.now()}-${crypto.randomUUID()}.` +
-      `${extension}`;
+      .slice(-100);
 
     const blob = await put(
-      finalName,
+      `mi-juntita/comprobantes/${Date.now()}-${safeName}`,
       file,
       {
         access: "public",
-        addRandomSuffix: false,
+        addRandomSuffix: true,
       }
     );
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        url: blob.url,
-        pathname: blob.pathname,
-        contentType: blob.contentType || file.type || "",
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    return Response.json({
+      ok: true,
+      url: blob.url,
+      pathname: blob.pathname,
+      contentType: blob.contentType || file.type || "",
+    });
 
   } catch (error) {
     console.error("Error subiendo comprobante:", error);
 
-    return new Response(
-      JSON.stringify({
+    return Response.json(
+      {
         error:
           error instanceof Error
             ? error.message
             : "No se pudo subir el comprobante.",
-      }),
+      },
       {
         status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
       }
     );
   }
