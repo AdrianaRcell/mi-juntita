@@ -55,8 +55,55 @@
     };
   }
 
-  let state = load();
-  let modalContext = null;
+let state = load();
+let modalContext = null;
+
+async function apiGetJuntas(){
+  try{
+    const response = await fetch("/api/juntas");
+    const data = await response.json();
+
+    if(!data.ok){
+      throw new Error(data.error || "No se pudieron cargar las juntas");
+    }
+
+    return data.juntas || [];
+  }catch(error){
+    console.error("Error cargando juntas:", error);
+    return null;
+  }
+}
+
+async function apiCreateJunta(junta){
+  try{
+    const response = await fetch("/api/juntas",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        id:junta.id,
+        name:junta.name,
+        goal:junta.goal,
+        normal:junta.normal,
+        modality:junta.modality,
+        variable:junta.variable
+      })
+    });
+
+    const data = await response.json();
+
+    if(!data.ok){
+      throw new Error(data.error || "No se pudo crear la junta");
+    }
+
+    return data.junta;
+  }catch(error){
+    console.error("Error creando junta:", error);
+    toast("No se pudo guardar la junta en la nube.");
+    return null;
+  }
+}
 
   function load(){
     try{
