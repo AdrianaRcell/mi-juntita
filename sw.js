@@ -1,12 +1,14 @@
-const CACHE_NAME = "mi-juntita-v2";
+const CACHE_NAME = "mi-juntita-v3";
 
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./test-mode.js",
   "./share-guard.js",
   "./enhancements.js",
+  "./reminders.js",
   "./manifest.webmanifest"
 ];
 
