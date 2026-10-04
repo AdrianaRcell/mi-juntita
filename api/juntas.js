@@ -2,6 +2,10 @@ import sql from "./db.js";
 
 export default async function handler(request, response) {
   try {
+    // ==========================================================
+    // GET — OBTENER TODAS LAS JUNTAS
+    // ==========================================================
+
     if (request.method === "GET") {
       const juntas = await sql`
         SELECT
@@ -22,6 +26,11 @@ export default async function handler(request, response) {
       });
     }
 
+
+    // ==========================================================
+    // POST — CREAR / ACTUALIZAR JUNTA
+    // ==========================================================
+
     if (request.method === "POST") {
       const {
         id,
@@ -32,12 +41,14 @@ export default async function handler(request, response) {
         variable
       } = request.body || {};
 
+
       if (!id || !name) {
         return response.status(400).json({
           ok: false,
           error: "Faltan datos de la junta"
         });
       }
+
 
       const result = await sql`
         INSERT INTO juntas (
@@ -56,28 +67,44 @@ export default async function handler(request, response) {
           ${modality || "quincenal"},
           ${variable !== false}
         )
-        ON CONFLICT (id) DO UPDATE SET
+
+        ON CONFLICT (id)
+
+        DO UPDATE SET
           name = EXCLUDED.name,
           goal = EXCLUDED.goal,
           normal = EXCLUDED.normal,
           modality = EXCLUDED.modality,
           variable = EXCLUDED.variable
+
         RETURNING *
       `;
 
-      return response.status(201).json({
+
+      return response.status(200).json({
         ok: true,
         junta: result[0]
       });
     }
+
+
+    // ==========================================================
+    // MÉTODO NO PERMITIDO
+    // ==========================================================
 
     return response.status(405).json({
       ok: false,
       error: "Método no permitido"
     });
 
+
   } catch (error) {
-    console.error(error);
+
+    console.error(
+      "Error en /api/juntas:",
+      error
+    );
+
 
     return response.status(500).json({
       ok: false,
