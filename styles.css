@@ -81,7 +81,7 @@ h1{font-size:clamp(30px,5vw,44px);margin:0;letter-spacing:-.04em}.muted{color:va
 .primary:active,.secondary:active{transform:translateY(3px) scale(.97)}
 .junta-btn:hover .action-icon{animation:petal .7s ease}.kelly-btn:hover .action-icon{animation:heart .7s ease}
 @keyframes petal{50%{transform:rotate(-12deg) scale(1.18)}} @keyframes heart{50%{transform:scale(1.2) rotate(-5deg)}}
-.quick-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin:18px 0}
+.quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin:18px 0}
 .action-card{
   border:1px solid var(--line);background:var(--card);backdrop-filter:blur(16px);box-shadow:0 10px 30px rgba(70,50,80,.07);
   border-radius:20px;padding:15px;display:flex;align-items:center;gap:11px;text-align:left;cursor:pointer;position:relative;overflow:hidden;
@@ -1152,4 +1152,60 @@ html.mj-shared-mode-pending .quick-grid,
 html.mj-shared-mode-pending .lower-grid,
 html.mj-shared-mode-pending .toast-wrap{
   visibility:hidden;
+}
+
+/* Botones de historial: ahora visibles y ordenados dentro de cada tarjeta */
+.mj-card-history-btn{
+  position:relative;
+  overflow:hidden;
+}
+
+.mj-card-history-btn:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.32) 50%,transparent 65%);
+  transform:translateX(-120%);
+  transition:transform .5s var(--ease);
+}
+
+.mj-card-history-btn:hover:after{
+  transform:translateX(120%);
+}
+
+/* Kelly ya no aparece como acción rápida; permanece como tarjeta dentro de DEUDAS. */
+.kelly-action{display:none!important}
+
+/* Estrellitas después de guardar un aporte/pago */
+.mj-payment-star{
+  position:absolute;
+  left:50%;
+  top:52%;
+  z-index:60;
+  pointer-events:none;
+  font-size:16px;
+  color:var(--pink);
+  text-shadow:0 0 10px color-mix(in srgb,var(--pink) 35%,transparent);
+  animation:mjPaymentStar 1.35s var(--mj-star-delay) var(--ease) both;
+}
+
+@keyframes mjPaymentStar{
+  0%{
+    opacity:0;
+    transform:translate(-50%,-50%) scale(.35) rotate(0deg);
+  }
+  18%{opacity:1}
+  100%{
+    opacity:0;
+    transform:
+      translate(calc(-50% + var(--mj-star-x)),calc(-50% + var(--mj-star-y)))
+      scale(var(--mj-star-scale))
+      rotate(var(--mj-star-r));
+  }
+}
+
+@media(max-width:760px){
+  .quick-grid{grid-template-columns:1fr}
+  .card-actions{flex-wrap:wrap}
+  .card-actions > button{flex:1 1 auto}
 }
