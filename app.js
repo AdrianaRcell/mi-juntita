@@ -215,6 +215,7 @@
     }
   }
 
+
   // ============================================================
   // API — OBTENER APORTES DE UNA JUNTA
   // ============================================================
@@ -254,13 +255,13 @@
       return null;
     }
   }
+
+
   // ============================================================
   // API — CREAR APORTE DE JUNTA
   // ============================================================
 
-  async function apiCreateJuntaPayment(
-    payment
-  ){
+  async function apiCreateJuntaPayment(payment){
 
     try{
 
@@ -334,6 +335,220 @@
 
 
   // ============================================================
+  // API — OBTENER KELLY
+  // ============================================================
+
+  async function apiGetKelly(){
+
+    try{
+
+      const response =
+        await fetch("/api/kelly");
+
+
+      const data =
+        await response.json();
+
+
+      if(!data.ok){
+
+        throw new Error(
+          data.error ||
+          "No se pudo cargar Kelly"
+        );
+      }
+
+
+      return data.kelly || null;
+
+    }catch(error){
+
+      console.error(
+        "Error cargando Kelly:",
+        error
+      );
+
+      return null;
+    }
+  }
+
+
+  // ============================================================
+  // API — CREAR / ACTUALIZAR KELLY
+  // ============================================================
+
+  async function apiSaveKelly(kelly){
+
+    try{
+
+      const response =
+        await fetch(
+          "/api/kelly",
+          {
+            method:"POST",
+
+            headers:{
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+
+                original:
+                  kelly.original
+              })
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if(!data.ok){
+
+        throw new Error(
+          data.error ||
+          "No se pudo guardar Kelly"
+        );
+      }
+
+
+      return data.kelly;
+
+    }catch(error){
+
+      console.error(
+        "Error guardando Kelly:",
+        error
+      );
+
+      toast(
+        "No se pudo guardar Kelly en la nube."
+      );
+
+      return null;
+    }
+  }
+
+
+  // ============================================================
+  // API — OBTENER PAGOS DE KELLY
+  // ============================================================
+
+  async function apiGetKellyPayments(){
+
+    try{
+
+      const response =
+        await fetch(
+          "/api/kelly-payments"
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if(!data.ok){
+
+        throw new Error(
+          data.error ||
+          "No se pudieron cargar los pagos de Kelly"
+        );
+      }
+
+
+      return data.payments || [];
+
+    }catch(error){
+
+      console.error(
+        "Error cargando pagos de Kelly:",
+        error
+      );
+
+      return null;
+    }
+  }
+
+
+  // ============================================================
+  // API — CREAR PAGO DE KELLY
+  // ============================================================
+
+  async function apiCreateKellyPayment(payment){
+
+    try{
+
+      const response =
+        await fetch(
+          "/api/kelly-payments",
+          {
+            method:"POST",
+
+            headers:{
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+
+                id:
+                  payment.id,
+
+                amount:
+                  payment.amount,
+
+                payment_date:
+                  payment.date,
+
+                method:
+                  payment.method,
+
+                note:
+                  payment.note,
+
+                receipt_url:""
+              })
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if(!data.ok){
+
+        throw new Error(
+          data.error ||
+          "No se pudo guardar el pago de Kelly"
+        );
+      }
+
+
+      return data.payment;
+
+    }catch(error){
+
+      console.error(
+        "Error guardando pago de Kelly:",
+        error
+      );
+
+      toast(
+        "No se pudo guardar el pago de Kelly en la nube."
+      );
+
+      return null;
+    }
+  }
+
+
+  // ============================================================
   // ASEGURAR JUNTA PRINCIPAL EN NEON
   // ============================================================
 
@@ -350,6 +565,75 @@
 
       return true;
     }
+
+
+    if(
+      state.migrations?.defaultJuntaCloud
+    ){
+
+      return true;
+    }
+
+
+    const saved =
+      await apiCreateJunta(
+        junta
+      );
+
+
+    if(!saved){
+
+      return false;
+    }
+
+
+    state.migrations = {
+
+      ...(state.migrations || {}),
+
+      defaultJuntaCloud:true
+    };
+
+
+    save();
+
+
+    return true;
+  }
+
+
+  // ============================================================
+  // ASEGURAR KELLY EN NEON
+  // ============================================================
+
+  async function ensureKellyCloud(){
+
+    const cloudKelly =
+      await apiGetKelly();
+
+
+    if(cloudKelly){
+
+      return true;
+    }
+
+
+    const saved =
+      await apiSaveKelly(
+        state.kelly
+      );
+
+
+    if(!saved){
+
+      return false;
+    }
+
+
+    return true;
+  }
+
+
   // ============================================================
   // SINCRONIZAR JUNTAS Y APORTES CON NEON
   // ============================================================
@@ -358,19 +642,9 @@
 
     try{
 
-      /*
-        Primero obtenemos las juntas que existen
-        actualmente en Neon.
-      */
-
       let cloudJuntas =
         await apiGetJuntas();
 
-
-      /*
-        Si Neon no responde, no tocamos los datos
-        locales. La aplicación puede seguir funcionando.
-      */
 
       if(cloudJuntas === null){
 
@@ -378,17 +652,16 @@
       }
 
 
-      /*
-        Si hay juntas locales que todavía no existen
-        en Neon, las subimos.
-      */
-
-      for(const localJunta of state.juntas){
+      for(
+        const localJunta
+        of state.juntas
+      ){
 
         const exists =
           cloudJuntas.some(
             cloudJunta =>
-              cloudJunta.id === localJunta.id
+              cloudJunta.id ===
+              localJunta.id
           );
 
 
@@ -400,11 +673,6 @@
         }
       }
 
-
-      /*
-        Volvemos a leer Neon después de subir
-        las juntas que faltaban.
-      */
 
       cloudJuntas =
         await apiGetJuntas();
@@ -419,24 +687,18 @@
       const mergedJuntas = [];
 
 
-      /*
-        Recorremos todas las juntas que existen
-        en Neon.
-      */
-
-      for(const cloudJunta of cloudJuntas){
+      for(
+        const cloudJunta
+        of cloudJuntas
+      ){
 
         const localJunta =
           state.juntas.find(
             j =>
-              j.id === cloudJunta.id
+              j.id ===
+              cloudJunta.id
           );
 
-
-        /*
-          Obtenemos los aportes guardados
-          en Neon para esta junta.
-        */
 
         const cloudPayments =
           await apiGetJuntaPayments(
@@ -446,26 +708,16 @@
 
         if(cloudPayments === null){
 
-          /*
-            Si una junta no puede cargar sus pagos,
-            conservamos sus datos locales.
-          */
-
           if(localJunta){
 
             mergedJuntas.push(
               localJunta
             );
-
           }
 
           continue;
         }
 
-
-        /*
-          Empezamos con los pagos de Neon.
-        */
 
         const paymentsById =
           new Map();
@@ -477,23 +729,31 @@
             paymentsById.set(
               payment.id,
               {
-                id:payment.id,
-                amount:Number(
-                  payment.amount || 0
-                ),
+                id:
+                  payment.id,
+
+                amount:
+                  Number(
+                    payment.amount || 0
+                  ),
+
                 date:
                   String(
                     payment.payment_date ||
                     ""
                   ).slice(0,10),
+
                 method:
                   payment.method || "",
+
                 note:
                   payment.note || "",
+
                 receiptData:
                   localJunta?.payments?.find(
                     p =>
-                      p.id === payment.id
+                      p.id ===
+                      payment.id
                   )?.receiptData || ""
               }
             );
@@ -502,16 +762,14 @@
         );
 
 
-        /*
-          Si existe algún aporte local que todavía
-          no está en Neon, intentamos subirlo.
-        */
-
         if(localJunta){
 
           for(
             const localPayment
-            of (localJunta.payments || [])
+            of (
+              localJunta.payments ||
+              []
+            )
           ){
 
             if(
@@ -535,50 +793,46 @@
               paymentsById.set(
                 uploaded.id,
                 {
-                  id:uploaded.id,
-                  amount:Number(
-                    uploaded.amount || 0
-                  ),
+                  id:
+                    uploaded.id,
+
+                  amount:
+                    Number(
+                      uploaded.amount || 0
+                    ),
+
                   date:
                     String(
                       uploaded.payment_date ||
                       localPayment.date ||
                       ""
                     ).slice(0,10),
+
                   method:
                     uploaded.method ||
                     localPayment.method ||
                     "",
+
                   note:
                     uploaded.note ||
                     localPayment.note ||
                     "",
+
                   receiptData:
                     localPayment.receiptData ||
                     ""
                 }
               );
             }
-
           }
         }
 
-
-        /*
-          Convertimos el Map nuevamente
-          en un arreglo de pagos.
-        */
 
         const payments =
           Array.from(
             paymentsById.values()
           );
 
-
-        /*
-          La información general de la junta
-          viene de Neon.
-        */
 
         mergedJuntas.push({
 
@@ -613,71 +867,217 @@
       }
 
 
-      /*
-        Si Neon tiene datos válidos, actualizamos
-        la memoria local con la información sincronizada.
-      */
-
       if(mergedJuntas.length){
 
         state.juntas =
           mergedJuntas;
-
 
         save();
       }
 
 
       console.log(
-        "Mi Juntita: sincronización con Neon completada."
+        "Mi Juntita: juntas sincronizadas con Neon."
       );
 
     }catch(error){
 
-      /*
-        Un problema de sincronización no debe
-        impedir que la aplicación abra.
-      */
-
       console.error(
-        "Error sincronizando con Neon:",
+        "Error sincronizando juntas con Neon:",
         error
       );
     }
   }
 
-    if(
-      state.migrations?.defaultJuntaCloud
-    ){
 
-      return true;
-    }
+  // ============================================================
+  // SINCRONIZAR KELLY CON NEON
+  // ============================================================
+
+  async function syncKellyCloud(){
+
+    try{
+
+      const cloudKelly =
+        await apiGetKelly();
 
 
-    const saved =
-      await apiCreateJunta(
-        junta
+      if(cloudKelly === null){
+
+        return;
+      }
+
+
+      /*
+        El monto original de Kelly
+        viene de Neon.
+      */
+
+      state.kelly.original =
+        Number(
+          cloudKelly.original || 0
+        );
+
+
+      const cloudPayments =
+        await apiGetKellyPayments();
+
+
+      if(cloudPayments === null){
+
+        save();
+
+        return;
+      }
+
+
+      const localPayments =
+        Array.isArray(
+          state.kelly.payments
+        )
+          ? state.kelly.payments
+          : [];
+
+
+      const paymentsById =
+        new Map();
+
+
+      /*
+        Primero cargamos lo que ya existe
+        en Neon.
+      */
+
+      cloudPayments.forEach(
+        payment => {
+
+          const localPayment =
+            localPayments.find(
+              p =>
+                p.id ===
+                payment.id
+            );
+
+
+          paymentsById.set(
+            payment.id,
+            {
+
+              id:
+                payment.id,
+
+              amount:
+                Number(
+                  payment.amount || 0
+                ),
+
+              date:
+                String(
+                  payment.payment_date ||
+                  ""
+                ).slice(0,10),
+
+              method:
+                payment.method || "",
+
+              note:
+                payment.note || "",
+
+              receiptData:
+                localPayment?.receiptData ||
+                ""
+            }
+          );
+        }
       );
 
 
-    if(!saved){
+      /*
+        Si existen pagos locales que todavía
+        no están en Neon, intentamos subirlos.
+      */
 
-      return false;
+      for(
+        const localPayment
+        of localPayments
+      ){
+
+        if(
+          paymentsById.has(
+            localPayment.id
+          )
+        ){
+
+          continue;
+        }
+
+
+        const uploaded =
+          await apiCreateKellyPayment(
+            localPayment
+          );
+
+
+        if(uploaded){
+
+          paymentsById.set(
+            uploaded.id,
+            {
+
+              id:
+                uploaded.id,
+
+              amount:
+                Number(
+                  uploaded.amount || 0
+                ),
+
+              date:
+                String(
+                  uploaded.payment_date ||
+                  localPayment.date ||
+                  ""
+                ).slice(0,10),
+
+              method:
+                uploaded.method ||
+                localPayment.method ||
+                "",
+
+              note:
+                uploaded.note ||
+                localPayment.note ||
+                "",
+
+              receiptData:
+                localPayment.receiptData ||
+                ""
+            }
+          );
+        }
+      }
+
+
+      state.kelly.payments =
+        Array.from(
+          paymentsById.values()
+        );
+
+
+      save();
+
+
+      console.log(
+        "Mi Juntita: Kelly sincronizada con Neon."
+      );
+
+    }catch(error){
+
+      console.error(
+        "Error sincronizando Kelly con Neon:",
+        error
+      );
     }
-
-
-    state.migrations = {
-
-      ...(state.migrations || {}),
-
-      defaultJuntaCloud:true
-    };
-
-
-    save();
-
-
-    return true;
   }
 
 
@@ -740,12 +1140,6 @@
         }
       };
 
-
-      // ========================================================
-      // MIGRACIÓN ÚNICA
-      // Elimina el antiguo aporte inicial de S/300
-      // que no tenía comprobante.
-      // ========================================================
 
       let migrated = false;
 
@@ -832,30 +1226,41 @@
   // INICIO
   // ============================================================
 
-    async function init(){
+  async function init(){
 
     applyTheme();
 
 
     /*
-      Primero aseguramos que la junta principal
-      exista en Neon.
+      1. Junta principal
     */
 
     await ensureDefaultJuntaCloud();
 
 
     /*
-      Después sincronizamos juntas y aportes
-      desde Neon.
+      2. Juntas + aportes
     */
 
     await syncCloudData();
 
 
     /*
-      Finalmente mostramos la información
-      ya sincronizada.
+      3. Kelly
+    */
+
+    await ensureKellyCloud();
+
+
+    /*
+      4. Kelly + pagos
+    */
+
+    await syncKellyCloud();
+
+
+    /*
+      5. Render
     */
 
     render();
@@ -1970,11 +2375,6 @@
     }
 
 
-    /*
-      Si es la junta principal,
-      comprobamos que exista en Neon.
-    */
-
     if(
       j.id === "junta_default"
     ){
@@ -2025,10 +2425,6 @@
     };
 
 
-    // ==========================================================
-    // PRIMERO → NEON
-    // ==========================================================
-
     const savedPayment =
       await apiCreateJuntaPayment(
         payment
@@ -2040,10 +2436,6 @@
       return;
     }
 
-
-    // ==========================================================
-    // SEGUNDO → LOCAL
-    // ==========================================================
 
     const before =
       j.payments.reduce(
@@ -2062,12 +2454,23 @@
 
     j.payments.push(
       {
-        id:payment.id,
-        amount:payment.amount,
-        date:payment.date,
-        method:payment.method,
-        note:payment.note,
-        receiptData:payment.receiptData
+        id:
+          payment.id,
+
+        amount:
+          payment.amount,
+
+        date:
+          payment.date,
+
+        method:
+          payment.method,
+
+        note:
+          payment.note,
+
+        receiptData:
+          payment.receiptData
       }
     );
 
@@ -2525,13 +2928,28 @@
     }
 
 
+    /*
+      Nos aseguramos de que Kelly
+      exista primero en Neon.
+    */
+
+    const cloudReady =
+      await ensureKellyCloud();
+
+
+    if(!cloudReady){
+
+      return;
+    }
+
+
     const data =
       await fileToDataURL(
         file
       );
 
 
-    state.kelly.payments.push({
+    const payment = {
 
       id:
         uid("kelly"),
@@ -2552,6 +2970,48 @@
 
       receiptData:
         data
+    };
+
+
+    /*
+      PRIMERO → NEON
+    */
+
+    const savedPayment =
+      await apiCreateKellyPayment(
+        payment
+      );
+
+
+    if(!savedPayment){
+
+      return;
+    }
+
+
+    /*
+      SEGUNDO → LOCAL
+    */
+
+    state.kelly.payments.push({
+
+      id:
+        payment.id,
+
+      amount:
+        payment.amount,
+
+      date:
+        payment.date,
+
+      method:
+        payment.method,
+
+      note:
+        payment.note,
+
+      receiptData:
+        payment.receiptData
     });
 
 
@@ -3987,7 +4447,8 @@
       <p class="intro">
 
         La información de tus juntas
-        ya puede guardarse en la nube.
+        y Kelly ya puede guardarse
+        en la nube.
 
         Algunas funciones todavía
         están en proceso de migración.
@@ -4040,7 +4501,8 @@
 
             <small>
 
-              Juntas y aportes de juntas
+              Juntas, aportes de juntas,
+              Kelly y pagos de Kelly
               ya se guardan en Neon.
 
             </small>
