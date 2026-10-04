@@ -54,19 +54,12 @@
       phraseIndex:0,
 
       juntas:[{
-
         id:"junta_default",
-
         name:"Junta",
-
         goal:3000,
-
         normal:250,
-
         modality:"quincenal",
-
         variable:true,
-
         payments:[]
       }],
 
@@ -166,15 +159,10 @@
               JSON.stringify({
 
                 id:junta.id,
-
                 name:junta.name,
-
                 goal:junta.goal,
-
                 normal:junta.normal,
-
                 modality:junta.modality,
-
                 variable:junta.variable
               })
           }
@@ -289,7 +277,8 @@
                 note:
                   payment.note,
 
-                receipt_url:""
+                receipt_url:
+                  payment.receiptUrl || ""
               })
           }
         );
@@ -489,7 +478,8 @@
                 note:
                   payment.note,
 
-                receipt_url:""
+                receipt_url:
+                  payment.receiptUrl || ""
               })
           }
         );
@@ -523,6 +513,89 @@
 
       return null;
     }
+  }
+
+
+  // ============================================================
+  // API — VERCEL BLOB / COMPROBANTES
+  // ============================================================
+
+  async function uploadReceipt(file){
+
+    if(!file){
+
+      throw new Error(
+        "No se recibió ningún comprobante."
+      );
+    }
+
+
+    if(!file.type || !file.type.startsWith("image/")){
+
+      throw new Error(
+        "El comprobante debe ser una imagen."
+      );
+    }
+
+
+    if(file.size > 8 * 1024 * 1024){
+
+      throw new Error(
+        "El comprobante no puede superar los 8 MB."
+      );
+    }
+
+
+    const formData =
+      new FormData();
+
+
+    formData.append(
+      "file",
+      file
+    );
+
+
+    const response =
+      await fetch(
+        "/api/upload-receipt",
+        {
+          method:"POST",
+          body:formData
+        }
+      );
+
+
+    let data = null;
+
+
+    try{
+
+      data =
+        await response.json();
+
+    }catch{
+
+      throw new Error(
+        "Vercel no devolvió una respuesta válida."
+      );
+    }
+
+
+    if(
+      !response.ok ||
+      !data.ok ||
+      !data.url
+    ){
+
+      throw new Error(
+        data?.error ||
+        "No se pudo subir el comprobante."
+      );
+    }
+
+
+    return data.url;
   }
 
 
@@ -613,7 +686,7 @@
 
 
   // ============================================================
-  // SINCRONIZAR JUNTAS Y APORTES CON NEON
+  // SINCRONIZAR JUNTAS Y APORTES
   // ============================================================
 
   async function syncCloudData(){
@@ -704,6 +777,14 @@
         cloudPayments.forEach(
           payment => {
 
+            const localPayment =
+              localJunta?.payments?.find(
+                p =>
+                  p.id ===
+                  payment.id
+              );
+
+
             paymentsById.set(
               payment.id,
               {
@@ -728,12 +809,14 @@
                 note:
                   payment.note || "",
 
+                receiptUrl:
+                  payment.receipt_url ||
+                  localPayment?.receiptUrl ||
+                  "",
+
                 receiptData:
-                  localJunta?.payments?.find(
-                    p =>
-                      p.id ===
-                      payment.id
-                  )?.receiptData || ""
+                  localPayment?.receiptData ||
+                  ""
               }
             );
           }
@@ -795,6 +878,11 @@
                   note:
                     uploaded.note ||
                     localPayment.note ||
+                    "",
+
+                  receiptUrl:
+                    uploaded.receipt_url ||
+                    localPayment.receiptUrl ||
                     "",
 
                   receiptData:
@@ -870,7 +958,7 @@
 
 
   // ============================================================
-  // SINCRONIZAR KELLY CON NEON
+  // SINCRONIZAR KELLY
   // ============================================================
 
   async function syncKellyCloud(){
@@ -952,6 +1040,11 @@
               note:
                 payment.note || "",
 
+              receiptUrl:
+                payment.receipt_url ||
+                localPayment?.receiptUrl ||
+                "",
+
               receiptData:
                 localPayment?.receiptData ||
                 ""
@@ -1011,6 +1104,11 @@
               note:
                 uploaded.note ||
                 localPayment.note ||
+                "",
+
+              receiptUrl:
+                uploaded.receipt_url ||
+                localPayment.receiptUrl ||
                 "",
 
               receiptData:
@@ -1194,18 +1292,13 @@
 
     applyTheme();
 
-
     await ensureDefaultJuntaCloud();
-
 
     await syncCloudData();
 
-
     await ensureKellyCloud();
 
-
     await syncKellyCloud();
-
 
     render();
 
@@ -1218,7 +1311,7 @@
 
 
   // ============================================================
-  // EVENTOS PRINCIPALES
+  // EVENTOS
   // ============================================================
 
   function bindStatic(){
@@ -1386,7 +1479,7 @@
 
 
   // ============================================================
-  // RENDER GENERAL
+  // RENDER
   // ============================================================
 
   function render(){
@@ -1470,7 +1563,9 @@
 
           const receipts =
             j.payments.filter(
-              p => p.receiptData
+              p =>
+                p.receiptUrl ||
+                p.receiptData
             );
 
 
@@ -1941,38 +2036,6 @@
   // COMPROBANTES
   // ============================================================
 
-  function fileToDataURL(file){
-
-    return new Promise(
-      (resolve,reject) => {
-
-        if(!file){
-
-          return resolve("");
-        }
-
-
-        const reader =
-          new FileReader();
-
-
-        reader.onload =
-          () =>
-            resolve(
-              reader.result
-            );
-
-
-        reader.onerror =
-          reject;
-
-
-        reader.readAsDataURL(file);
-      }
-    );
-  }
-
-
   function receiptField(
     required=true
   ){
@@ -2009,8 +2072,8 @@
 
           <div class="hint">
 
-            La foto queda vinculada
-            específicamente a este pago.
+            El comprobante se subirá
+            de forma segura a la nube.
 
           </div>
 
@@ -2182,25 +2245,11 @@
               Seleccionar
             </option>
 
-            <option>
-              Yape
-            </option>
-
-            <option>
-              Plin
-            </option>
-
-            <option>
-              Transferencia
-            </option>
-
-            <option>
-              Efectivo
-            </option>
-
-            <option>
-              Otro
-            </option>
+            <option>Yape</option>
+            <option>Plin</option>
+            <option>Transferencia</option>
+            <option>Efectivo</option>
+            <option>Otro</option>
 
           </select>
 
@@ -2335,10 +2384,38 @@
     }
 
 
-    const data =
-      await fileToDataURL(
-        file
+    /*
+      1. SUBIR COMPROBANTE A VERCEL BLOB
+    */
+
+    let receiptUrl = "";
+
+
+    try{
+
+      toast(
+        "Subiendo comprobante…"
       );
+
+
+      receiptUrl =
+        await uploadReceipt(
+          file
+        );
+
+    }catch(error){
+
+      console.error(
+        "Error subiendo comprobante:",
+        error
+      );
+
+
+      return toast(
+        error.message ||
+        "No se pudo subir el comprobante."
+      );
+    }
 
 
     const payment = {
@@ -2363,12 +2440,15 @@
           .value
           .trim(),
 
-      receiptData:
-        data,
+      receiptUrl,
 
-      receiptUrl:""
+      receiptData:""
     };
 
+
+    /*
+      2. GUARDAR PAGO EN NEON
+    */
 
     const savedPayment =
       await apiCreateJuntaPayment(
@@ -2414,8 +2494,11 @@
       note:
         payment.note,
 
-      receiptData:
-        payment.receiptData
+      receiptUrl:
+        savedPayment.receipt_url ||
+        receiptUrl,
+
+      receiptData:""
     });
 
 
@@ -2751,25 +2834,11 @@
               Seleccionar
             </option>
 
-            <option>
-              Yape
-            </option>
-
-            <option>
-              Plin
-            </option>
-
-            <option>
-              Transferencia
-            </option>
-
-            <option>
-              Efectivo
-            </option>
-
-            <option>
-              Otro
-            </option>
+            <option>Yape</option>
+            <option>Plin</option>
+            <option>Transferencia</option>
+            <option>Efectivo</option>
+            <option>Otro</option>
 
           </select>
 
@@ -2882,10 +2951,38 @@
     }
 
 
-    const data =
-      await fileToDataURL(
-        file
+    /*
+      1. SUBIR COMPROBANTE A VERCEL BLOB
+    */
+
+    let receiptUrl = "";
+
+
+    try{
+
+      toast(
+        "Subiendo comprobante…"
       );
+
+
+      receiptUrl =
+        await uploadReceipt(
+          file
+        );
+
+    }catch(error){
+
+      console.error(
+        "Error subiendo comprobante:",
+        error
+      );
+
+
+      return toast(
+        error.message ||
+        "No se pudo subir el comprobante."
+      );
+    }
 
 
     const payment = {
@@ -2907,16 +3004,14 @@
           .value
           .trim(),
 
-      receiptData:
-        data,
+      receiptUrl,
 
-      receiptUrl:""
+      receiptData:""
     };
 
 
     /*
-      PRIMERO:
-      Neon
+      2. GUARDAR PAGO EN NEON
     */
 
     const savedPayment =
@@ -2930,13 +3025,6 @@
       return;
     }
 
-
-    /*
-      SEGUNDO:
-      almacenamiento local
-      para conservar temporalmente
-      el comprobante.
-    */
 
     state.kelly.payments.push({
 
@@ -2955,8 +3043,11 @@
       note:
         payment.note,
 
-      receiptData:
-        payment.receiptData
+      receiptUrl:
+        savedPayment.receipt_url ||
+        receiptUrl,
+
+      receiptData:""
     });
 
 
@@ -3376,55 +3467,83 @@
       <div class="history">
 
         ${
+          j.payments.length
+
+            ?
+
           j.payments
             .slice()
             .reverse()
-            .map(p => `
+            .map(p => {
 
-              <div class="history-row">
+              const receipt =
+                p.receiptUrl ||
+                p.receiptData ||
+                "";
 
-                <div>
+              return `
 
-                  <b>
-                    ${money(p.amount)}
-                  </b>
+                <div class="history-row">
 
-                  <br>
+                  <div>
 
-                  <small>
+                    <b>
+                      ${money(p.amount)}
+                    </b>
 
-                    ${esc(p.date)}
+                    <br>
 
-                    ${
-                      p.note
-                        ? ` · ${esc(p.note)}`
-                        : ""
-                    }
+                    <small>
 
-                  </small>
+                      ${esc(p.date)}
+
+                      ${
+                        p.method
+                          ? ` · ${esc(p.method)}`
+                          : ""
+                      }
+
+                      ${
+                        p.note
+                          ? ` · ${esc(p.note)}`
+                          : ""
+                      }
+
+                    </small>
+
+                  </div>
+
+
+                  ${
+                    receipt
+                      ? `
+
+                        <button
+                          class="secondary"
+                          data-receipt-view="${esc(receipt)}"
+                        >
+                          📷 Ver comprobante
+                        </button>
+
+                      `
+                      : ""
+                  }
 
                 </div>
 
-
-                ${
-                  p.receiptData
-                    ? `
-
-                      <button
-                        class="secondary"
-                        data-receipt-view="${esc(p.receiptData)}"
-                      >
-                        📷 Ver
-                      </button>
-
-                    `
-                    : ""
-                }
-
-              </div>
-
-            `)
+              `;
+            })
             .join("")
+
+            :
+
+          `
+            <div class="empty">
+
+              Todavía no hay aportes.
+
+            </div>
+          `
         }
 
       </div>
@@ -3437,6 +3556,14 @@
   // ============================================================
 
   function openReceipt(src){
+
+    if(!src){
+
+      return toast(
+        "No se encontró el comprobante."
+      );
+    }
+
 
     openModal(`
 
@@ -3590,14 +3717,13 @@
 
       const receipts =
         j.payments
-          .filter(
-            p =>
-              p.receiptData
-          )
           .map(
             p =>
-              p.receiptData
-          );
+              p.receiptUrl ||
+              p.receiptData ||
+              ""
+          )
+          .filter(Boolean);
 
 
       const token =
@@ -3746,14 +3872,13 @@
 
       const receipts =
         state.kelly.payments
-          .filter(
-            p =>
-              p.receiptData
-          )
           .map(
             p =>
-              p.receiptData
-          );
+              p.receiptUrl ||
+              p.receiptData ||
+              ""
+          )
+          .filter(Boolean);
 
 
       const token =
@@ -4118,7 +4243,7 @@
 
 
   // ============================================================
-  // NUEVA JUNTA — NEON
+  // NUEVA JUNTA
   // ============================================================
 
   function openNewJunta(){
@@ -4210,25 +4335,11 @@
 
           <select id="modality">
 
-            <option>
-              semanal
-            </option>
-
-            <option>
-              quincenal
-            </option>
-
-            <option>
-              mensual
-            </option>
-
-            <option>
-              variable
-            </option>
-
-            <option>
-              otra
-            </option>
+            <option>semanal</option>
+            <option selected>quincenal</option>
+            <option>mensual</option>
+            <option>variable</option>
+            <option>otra</option>
 
           </select>
 
@@ -4384,11 +4495,11 @@
 
       <p class="intro">
 
-        Juntas, aportes de juntas
-        y pagos de Kelly ya se
-        guardan en Neon.
+        Juntas, aportes de juntas,
+        pagos de Kelly y comprobantes
+        ya se guardan en la nube.
 
-        Los gastos, tareas y comprobantes
+        Los gastos y tareas
         todavía usan almacenamiento local.
 
       </p>
@@ -4439,9 +4550,9 @@
 
             <small>
 
-              Juntas, aportes de juntas,
-              Kelly y pagos de Kelly
-              ya se guardan en Neon.
+              Juntas, aportes,
+              Kelly, pagos y URLs
+              de comprobantes.
 
             </small>
 
