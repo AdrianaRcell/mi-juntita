@@ -17,81 +17,188 @@ export async function POST(request) {
 
     if (origin && origin !== url.origin) {
       return json(
-        { ok: false, error: "Origen no permitido." },
+        {
+          ok: false,
+          error: "Origen no permitido.",
+        },
         403
       );
     }
 
     const body = await request.json().catch(() => null);
-    const paymentId = body?.paymentId;
 
-    if (
-      paymentId === undefined ||
-      paymentId === null ||
-      String(paymentId).trim() === ""
-    ) {
-      return json(
-        { ok: false, error: "Falta el ID del pago." },
-        400
-      );
+    const paymentId = body?.paymentId ?? "";
+    const amount = Number(body?.amount || 0);
+    const date = String(body?.date || "").trim();
+    const method = String(body?.method || "").trim();
+    const note = String(body?.note || "").trim();
+    const receiptUrl = String(body?.receiptUrl || "").trim();
+
+    let payment = null;
+
+    // ============================================================
+    // 1. Intentar por ID directo
+    // ============================================================
+
+    if (paymentId !== null && String(paymentId).trim() !== "") {
+      const byId = await sql`
+        SELECT
+          id,
+          amount,
+          date,
+          method,
+          note,
+          receipt_url
+        FROM kelly_payments
+        WHERE CAST(id AS TEXT) = CAST(${String(paymentId)} AS TEXT)
+        LIMIT 1
+      `;
+
+      if (byId.length) {
+        payment = byId[0];
+      }
     }
 
-    // 1. Buscar primero el pago para recuperar su comprobante.
-    const paymentRows = await sql`
-      SELECT
-        id,
-        amount,
-        receipt_url
-      FROM kelly_payments
-      WHERE id = ${paymentId}
-      LIMIT 1
-    `;
+    // ============================================================
+    // 2. Si el ID no coincide, buscar por comprobante
+    // ============================================================
 
-    if (!paymentRows.length) {
+    if (!payment && receiptUrl) {
+      const byReceipt = await sql`
+        SELECT
+          id,
+          amount,
+          date,
+          method,
+          note,
+          receipt_url
+        FROM kelly_payments
+        WHERE receipt_url = ${receiptUrl}
+        LIMIT 1
+      `;
+
+      if (byReceipt.length) {
+        payment = byReceipt[0];
+      }
+    }
+
+    // ============================================================
+    // 3. Último recurso: buscar por datos exactos del pago
+    // ============================================================
+
+    if (!payment && amount > 0 && date) {
+      const matches = await sql`
+        SELECT
+          id,
+          amount,
+          date,
+          method,
+          note,
+          receipt_url
+        FROM kelly_payments
+        WHERE amount = ${amount}
+          AND CAST(date AS TEXT) = ${date}
+          AND COALESCE(method, '') = ${method}
+          AND COALESCE(note, '') = ${note}
+        ORDER BY id DESC
+        LIMIT 2
+      `;
+
+      if (matches.length === 1) {
+        payment = matches[0];
+      }
+
+      if (matches.length > 1) {
+        return json(
+          {
+            ok: false,
+            error:
+              "Hay más de un pago con los mismos datos. No se eliminó ninguno para evitar borrar el incorrecto.",
+          },
+          409
+        );
+      }
+    }
+
+    // ============================================================
+    // 4. No encontrado
+    // ============================================================
+
+    if (!payment) {
       return json(
         {
           ok: false,
-          error: "No se encontró el pago en Neon. Puede que ya haya sido eliminado.",
+          error:
+            "No se encontró el pago en Neon. El registro puede usar un ID diferente al de la aplicación.",
         },
         404
       );
     }
 
-    const payment = paymentRows[0];
-    const receiptUrl = payment.receipt_url || "";
+    // ============================================================
+    // 5. BORRAR EL REGISTRO REAL DE NEON
+    // ============================================================
 
-    // 2. BORRAR EL REGISTRO DE PAGO DE NEON.
-    const deletedRows = await sql`
+    const deleted = await sql`
       DELETE FROM kelly_payments
-      WHERE id = ${paymentId}
-      RETURNING id, amount
+      WHERE id = ${payment.id}
+      RETURNING
+        id,
+        amount,
+        date,
+        method,
+        note,
+        receipt_url
     `;
 
-    if (!deletedRows.length) {
+    if (!deleted.length) {
       return json(
-        { ok: false, error: "No se pudo eliminar el registro del pago." },
+        {
+          ok: false,
+          error: "No se pudo eliminar el registro de Neon.",
+        },
         500
       );
     }
 
-    // 3. BORRAR EL COMPROBANTE DE VERCEL BLOB.
+    const deletedPayment = deleted[0];
+
+    // ============================================================
+    // 6. BORRAR COMPROBANTE DE VERCEL BLOB
+    // ============================================================
+
     let receiptDeleted = true;
 
-    if (receiptUrl) {
+    if (deletedPayment.receipt_url) {
       try {
-        await del(receiptUrl);
+        await del(deletedPayment.receipt_url);
       } catch (blobError) {
         receiptDeleted = false;
 
         console.warn(
-          "El registro fue eliminado, pero no se pudo eliminar el comprobante:",
+          "El pago fue eliminado de Neon, pero no se pudo eliminar el comprobante:",
           blobError
         );
       }
     }
 
-    // 4. VOLVER A LEER LOS PAGOS RESTANTES.
-    const remainingPayments = await sql`
+    // ============================================================
+    // 7. RECALCULAR KELLY DESDE NEON
+    // ============================================================
+
+    const kellyRows = await sql`
+      SELECT
+        id,
+        original
+      FROM kelly
+      LIMIT 1
+    `;
+
+    const original = Number(
+      kellyRows[0]?.original ?? 2800
+    );
+
+    const remaining = await sql`
       SELECT
         id,
         amount,
@@ -103,29 +210,21 @@ export async function POST(request) {
       ORDER BY date DESC, id DESC
     `;
 
-    // 5. VOLVER A LEER LA DEUDA ORIGINAL.
-    const kellyRows = await sql`
-      SELECT
-        id,
-        original
-      FROM kelly
-      LIMIT 1
-    `;
-
-    const original = Number(kellyRows[0]?.original || 2800);
-
-    const paid = remainingPayments.reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
+    const paid = remaining.reduce(
+      (sum, row) => sum + Number(row.amount || 0),
       0
     );
 
-    const balance = Math.max(0, original - paid);
+    const balance = Math.max(
+      0,
+      original - paid
+    );
 
     return json({
       ok: true,
 
-      deletedPaymentId: payment.id,
-      deletedAmount: Number(payment.amount || 0),
+      deletedPaymentId: deletedPayment.id,
+      deletedAmount: Number(deletedPayment.amount || 0),
 
       receiptDeleted,
 
@@ -133,12 +232,15 @@ export async function POST(request) {
         original,
         paid,
         balance,
-        payments: remainingPayments,
+        payments: remaining,
       },
     });
 
   } catch (error) {
-    console.error("Error eliminando pago de Kelly:", error);
+    console.error(
+      "Error eliminando pago de Kelly:",
+      error
+    );
 
     return json(
       {
