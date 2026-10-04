@@ -31,7 +31,8 @@
     <div class="top-actions">
       <button class="icon-btn" id="themeBtn" type="button" title="Cambiar tema">☾</button>
       <button class="icon-btn bell-btn" id="notifyBtn" type="button" title="Notificaciones">♧<i id="notifDot"></i></button>
-      <button class="icon-btn share-main" id="shareBtn" type="button" title="Compartir">↗</button>
+      <button class="icon-btn mj-refresh-btn" id="mjRefreshBtn" type="button" title="Actualizar datos" aria-label="Actualizar datos">↻</button>
+            <button class="icon-btn share-main" id="shareBtn" type="button" title="Compartir">↗</button>
     </div>
   </header>
 
@@ -55,7 +56,7 @@
         <em>＋</em>
       </button>
 
-      <button class="action-card kelly-action" id="kellyBtn" type="button">
+      <button class="action-card kelly-action" id="kellyBtn" type="button" hidden>
         <span class="action-icon">💗</span>
         <span><b>Registrar Kelly</b><small>Agregar un pago</small></span>
         <em>＋</em>
@@ -85,6 +86,33 @@
   </div>
 
   <script src="share-guard.js"></script>
+
+  <!-- Limpieza ÚNICA de datos locales de prueba de Kelly.
+       Se ejecuta antes de app.js para que los pagos antiguos no
+       vuelvan a subirse a Neon durante la sincronización. -->
+  <script>
+    (() => {
+      const RESET_KEY = "miJuntita.kellyTestReset.v3";
+      try {
+        if (!localStorage.getItem(RESET_KEY)) {
+          const raw = localStorage.getItem("miJuntita.v2");
+          if (raw) {
+            const data = JSON.parse(raw);
+            data.kelly = {
+              ...(data.kelly || {}),
+              original: 0,
+              payments: []
+            };
+            localStorage.setItem("miJuntita.v2", JSON.stringify(data));
+          }
+          localStorage.setItem(RESET_KEY, "done");
+        }
+      } catch (error) {
+        console.warn("Mi Juntita: no se pudo limpiar el estado local de prueba de Kelly.", error);
+      }
+    })();
+  </script>
+
   <script src="app.js"></script>
   <script src="enhancements.js"></script>
 
