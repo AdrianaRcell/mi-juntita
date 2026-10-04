@@ -85,36 +85,47 @@
     </div>
   </div>
 
+  <script src="test-mode.js"></script>
   <script src="share-guard.js"></script>
 
-  <!-- Limpieza ÚNICA de datos locales de prueba de Kelly.
-       Se ejecuta antes de app.js para que los pagos antiguos no
-       vuelvan a subirse a Neon durante la sincronización. -->
   <script>
     (() => {
-      const RESET_KEY = "miJuntita.kellyTestReset.v3";
-      try {
-        if (!localStorage.getItem(RESET_KEY)) {
-          const raw = localStorage.getItem("miJuntita.v2");
-          if (raw) {
-            const data = JSON.parse(raw);
-            data.kelly = {
-              ...(data.kelly || {}),
-              original: 0,
-              payments: []
-            };
-            localStorage.setItem("miJuntita.v2", JSON.stringify(data));
+      const params = new URLSearchParams(location.search);
+      const hash = location.hash.replace(/^#/, "");
+      const hashParams = new URLSearchParams(hash);
+      const shared = !!(params.get("share") || hashParams.get("share"));
+
+      window.MiJuntitaSharedMode = shared;
+
+      if (!shared) {
+        try {
+          const RESET_KEY = "miJuntita.kellyRealBaseline.v1";
+          if (!localStorage.getItem(RESET_KEY)) {
+            const raw = localStorage.getItem("miJuntita.v2");
+            if (raw) {
+              const data = JSON.parse(raw);
+              data.kelly = {
+                ...(data.kelly || {}),
+                original: 2800,
+                payments: []
+              };
+              localStorage.setItem("miJuntita.v2", JSON.stringify(data));
+            }
+            localStorage.setItem(RESET_KEY, "done");
           }
-          localStorage.setItem(RESET_KEY, "done");
+        } catch (error) {
+          console.warn("Mi Juntita: no se pudo limpiar el estado local de prueba de Kelly.", error);
         }
-      } catch (error) {
-        console.warn("Mi Juntita: no se pudo limpiar el estado local de prueba de Kelly.", error);
+      }
+
+      if (!shared) {
+        document.write('<script src="app.js"><\/script>');
       }
     })();
   </script>
 
-  <script src="app.js"></script>
   <script src="enhancements.js"></script>
+  <script src="reminders.js"></script>
 
   <script>
     if ("serviceWorker" in navigator) {
