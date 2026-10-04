@@ -40,6 +40,7 @@
   ]);
 
   function isKnownTestJunta(junta) {
+    if (window.MiJuntitaTestMode) return false;
     const name = String(junta?.name || "").trim().toLowerCase();
     return TEST_JUNTA_NAMES.has(name);
   }
@@ -979,6 +980,15 @@
           </div>
         </div>
 
+        ${!sharedMode ? `
+          <div class="mj-delete-zone">
+            <button class="mj-danger-btn" type="button" data-mj-delete-payment="true">
+              🗑 ${type === "junta" ? "Eliminar este aporte" : "Eliminar este pago"}
+            </button>
+            <small>Al eliminarlo, también se quitará su comprobante si tiene uno.</small>
+          </div>
+        ` : ""}
+
         <div class="mj-receipt-title">Comprobante</div>
         ${receipt ? `
           <button class="mj-receipt-stage" type="button" data-mj-large-receipt="${esc(receipt)}">
@@ -1305,7 +1315,7 @@
     `);
   }
 
-  function delegateClicks(event) {
+  async function delegateClicks(event) {
     const target = event.target;
     if (!(target instanceof Element)) return;
 
@@ -1435,6 +1445,159 @@
       } else if (currentDetailContext) {
         openHistory(currentDetailContext.type, currentDetailContext.parentId || "");
       }
+      return;
+    }
+
+    const deletePayment = target.closest("[data-mj-delete-payment]");
+    if (deletePayment && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const ctx = currentDetailContext;
+      if (!ctx || !ctx.paymentId || !["kelly", "junta"].includes(ctx.type)) {
+        toast("No se pudo identificar el movimiento.");
+        return;
+      }
+
+      const payment = findPayment(ctx.type, ctx.parentId || "", ctx.paymentId);
+
+      if (!payment) {
+        toast("Ese movimiento ya no existe.");
+        return;
+      }
+
+      const label = ctx.type === "junta" ? "aporte de la Junta" : "pago de Kelly";
+
+      openModal(`
+        <div class="mj-confirm-shell">
+          <div class="mj-confirm-icon">🗑️</div>
+          <h2>¿Eliminar este movimiento?</h2>
+          <p class="intro">Vas a eliminar el ${label} de <b>${money(payment.amount)}</b>. Esta acción no se puede deshacer.</p>
+          ${payment.receiptUrl || payment.receiptData ? `<div class="mj-confirm-note">También se eliminará el comprobante asociado.</div>` : ""}
+          <div class="form-actions mj-confirm-actions">
+            <button class="secondary" type="button" data-mj-cancel-delete="true">Cancelar</button>
+            <button class="mj-danger-btn mj-danger-confirm" type="button" data-mj-confirm-delete-payment="true">Sí, eliminar</button>
+          </div>
+        </div>
+      `);
+      return;
+    }
+
+    const cancelDelete = target.closest("[data-mj-cancel-delete]");
+    if (cancelDelete) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const ctx = currentDetailContext;
+      if (ctx?.paymentId) {
+        openDetail(ctx.type, ctx.parentId || "", ctx.paymentId);
+      } else {
+        closeModal();
+      }
+      return;
+    }
+
+    const confirmDeletePayment = target.closest("[data-mj-confirm-delete-payment]");
+    if (confirmDeletePayment && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const ctx = currentDetailContext;
+      if (!ctx || !ctx.paymentId || !["kelly", "junta"].includes(ctx.type)) {
+        toast("No se pudo identificar el movimiento.");
+        return;
+      }
+
+      const state = getState();
+      const paymentId = ctx.paymentId;
+      const endpoint = ctx.type === "junta"
+        ? "/api/delete-junta-payment"
+        : "/api/delete-kelly-payment";
+
+      confirmDeletePayment.disabled = true;
+      confirmDeletePayment.textContent = "Eliminando…";
+
+      try {
+        const payload = { paymentId };
+        if (ctx.type === "junta") payload.juntaId = ctx.parentId || "";
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.error || "No se pudo eliminar el movimiento.");
+        }
+
+        if (ctx.type === "kelly") {
+          if (state?.kelly) {
+            state.kelly.payments = Array.isArray(state.kelly.payments)
+              ? state.kelly.payments.filter(item => String(item.id) !== String(paymentId))
+              : [];
+          }
+        } else {
+          const junta = (state?.juntas || []).find(j => String(j.id) === String(ctx.parentId));
+          if (junta) {
+            junta.payments = Array.isArray(junta.payments)
+              ? junta.payments.filter(item => String(item.id) !== String(paymentId))
+              : [];
+          }
+
+          const archive = getCompletedArchive();
+          const archiveIndex = archive.findIndex(item => String(item.id) === String(ctx.parentId));
+          if (archiveIndex >= 0) {
+            archive[archiveIndex].payments = Array.isArray(archive[archiveIndex].payments)
+              ? archive[archiveIndex].payments.filter(item => String(item.id) !== String(paymentId))
+              : [];
+            writeJsonStorage(ARCHIVE_KEY, archive);
+          }
+        }
+
+        try {
+          const raw = localStorage.getItem("miJuntita.v2");
+          if (raw) {
+            const localState = JSON.parse(raw);
+
+            if (ctx.type === "kelly" && localState?.kelly) {
+              localState.kelly.payments = Array.isArray(localState.kelly.payments)
+                ? localState.kelly.payments.filter(item => String(item.id) !== String(paymentId))
+                : [];
+              localState.kelly.original = 2800;
+            }
+
+            if (ctx.type === "junta" && Array.isArray(localState?.juntas)) {
+              const localJunta = localState.juntas.find(j => String(j.id) === String(ctx.parentId));
+              if (localJunta) {
+                localJunta.payments = Array.isArray(localJunta.payments)
+                  ? localJunta.payments.filter(item => String(item.id) !== String(paymentId))
+                  : [];
+              }
+            }
+
+            localStorage.setItem("miJuntita.v2", JSON.stringify(localState));
+          }
+        } catch (storageError) {
+          console.warn("No se pudo actualizar la copia local:", storageError);
+        }
+
+        currentDetailContext = null;
+        closeModal();
+        toast(ctx.type === "junta" ? "Aporte eliminado correctamente." : "Pago eliminado correctamente.");
+
+        setTimeout(() => window.location.reload(), 450);
+      } catch (error) {
+        console.error("Error eliminando movimiento:", error);
+        confirmDeletePayment.disabled = false;
+        confirmDeletePayment.textContent = "Sí, eliminar";
+        toast(error instanceof Error ? error.message : "No se pudo eliminar el movimiento.");
+      }
+
       return;
     }
 
