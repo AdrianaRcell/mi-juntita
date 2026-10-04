@@ -547,6 +547,15 @@
     const grid = $("#juntasGrid");
     if (!state || !grid) return;
 
+    // Este observer vigila cambios hechos por la app principal.
+    // Como aquí reconstruimos #juntasGrid a propósito, lo
+    // desconectamos temporalmente para evitar un bucle infinito
+    // de renderizado que puede congelar la página.
+    const observerWasConnected = Boolean(gridObserver);
+    if (observerWasConnected) {
+      gridObserver.disconnect();
+    }
+
     detectNewRecord(state);
     archiveCompletedJuntas(state);
 
@@ -662,6 +671,11 @@
       });
 
     structuring = false;
+
+    if (observerWasConnected) {
+      gridObserver.observe(grid, { childList: true, subtree: false });
+    }
+
     scheduleArchiveCleanup();
   }
 
