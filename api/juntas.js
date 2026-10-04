@@ -2,7 +2,6 @@ import sql from "./db.js";
 
 export default async function handler(request, response) {
   try {
-    // GET → obtener todas las juntas
     if (request.method === "GET") {
       const juntas = await sql`
         SELECT
@@ -23,7 +22,6 @@ export default async function handler(request, response) {
       });
     }
 
-    // POST → crear una nueva junta
     if (request.method === "POST") {
       const {
         id,
@@ -58,6 +56,13 @@ export default async function handler(request, response) {
           ${modality || "quincenal"},
           ${variable !== false}
         )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          goal = EXCLUDED.goal,
+          normal = EXCLUDED.normal,
+          modality = EXCLUDED.modality,
+          variable = EXCLUDED.variable
         RETURNING *
       `;
 
