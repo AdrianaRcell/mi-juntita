@@ -31,6 +31,33 @@
   // Cuando terminemos las pruebas, cambia esta línea por REAL_ARCHIVE_MS.
   const ARCHIVE_DURATION_MS = TEST_ARCHIVE_MS;
 
+  // Limpieza temporal de pruebas conocidas.
+  // Esto evita que una "Junta Test" vuelva a aparecer mientras terminamos las pruebas.
+  const TEST_JUNTA_NAMES = new Set([
+    "junta test",
+    "junta de prueba",
+    "junta prueba"
+  ]);
+
+  function isKnownTestJunta(junta) {
+    const name = String(junta?.name || "").trim().toLowerCase();
+    return TEST_JUNTA_NAMES.has(name);
+  }
+
+  // Cuando Kelly alcanza el 100 %, se retira de la interfaz.
+  // Conservamos sus pagos en Neon para no perder el historial.
+  function isKellyCompleted(state) {
+    const original = Number(state?.kelly?.original || 0);
+    if (original <= 0) return false;
+
+    const paid = (state?.kelly?.payments || []).reduce(
+      (sum, payment) => sum + Number(payment?.amount || 0),
+      0
+    );
+
+    return paid >= original;
+  }
+
   let archiveCleanupTimer = null;
 
   const esc = value => String(value ?? "").replace(/[&<>\"']/g, c => ({
@@ -239,6 +266,12 @@
 
     for (const junta of state.juntas || []) {
       if (!junta?.id || hidden.has(junta.id)) {
+        continue;
+      }
+
+      if (isKnownTestJunta(junta)) {
+        hidden.add(junta.id);
+        changed = true;
         continue;
       }
 
@@ -573,6 +606,41 @@
     legacy.setAttribute("aria-hidden", "true");
   }
 
+  function ensureRefreshButton() {
+    if (sharedMode) return;
+
+    const bind = button => {
+      if (!button || button.dataset.mjRefreshBound === "1") return;
+      button.dataset.mjRefreshBound = "1";
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        button.classList.add("mj-refreshing");
+        const label = button.getAttribute("title") || "Actualizar datos";
+        toast(`${label}…`);
+        setTimeout(() => window.location.reload(), 180);
+      });
+    };
+
+    const existing = $("#mjRefreshBtn");
+    if (existing) {
+      bind(existing);
+      return;
+    }
+
+    const actions = $(".top-actions");
+    if (!actions) return;
+
+    const button = document.createElement("button");
+    button.className = "icon-btn mj-refresh-btn";
+    button.id = "mjRefreshBtn";
+    button.type = "button";
+    button.title = "Actualizar datos";
+    button.setAttribute("aria-label", "Actualizar datos");
+    button.textContent = "↻";
+    actions.insertBefore(button, actions.firstChild);
+    bind(button);
+  }
+
   function playNewPaymentStars(type = "junta") {
     const layer = $("#celebrationLayer");
     if (!layer) return;
@@ -604,6 +672,7 @@
     if (!state || !grid) return;
 
     hideLegacyKellyQuickAction();
+    ensureRefreshButton();
 
     // Este observer vigila cambios hechos por la app principal.
     // Como aquí reconstruimos #juntasGrid a propósito, lo
@@ -621,7 +690,8 @@
       .filter(el => el.classList.contains("card"))
       .filter(el => {
         const juntaId = el.dataset.juntaCard || "";
-        return !isJuntaSuppressed(juntaId);
+        const junta = (state.juntas || []).find(j => j.id === juntaId);
+        return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta);
       });
 
     structuring = true;
@@ -677,24 +747,29 @@
     savings.appendChild(savingsCards);
     appendPreviousJuntas(savings);
 
-    const debts = document.createElement("section");
-    debts.className = "mj-finance-section mj-debts-section";
-    debts.appendChild(
-      makeSectionHeader(
-        "💗",
-        "DEUDAS",
-        "Lo pendiente",
-        "Aquí puedes revisar Kelly y sus pagos."
-      )
-    );
-
-    const debtCards = document.createElement("div");
-    debtCards.className = "mj-finance-cards";
-    debtCards.appendChild(makeKellyCard(state));
-    debts.appendChild(debtCards);
-
     grid.appendChild(savings);
-    grid.appendChild(debts);
+
+    // Kelly desaparece de la interfaz cuando queda completamente pagada.
+    // Con deuda original S/0 todavía se muestra para permitir iniciar/revisar.
+    if (!isKellyCompleted(state)) {
+      const debts = document.createElement("section");
+      debts.className = "mj-finance-section mj-debts-section";
+      debts.appendChild(
+        makeSectionHeader(
+          "💗",
+          "DEUDAS",
+          "Lo pendiente",
+          "Aquí puedes revisar Kelly y sus pagos."
+        )
+      );
+
+      const debtCards = document.createElement("div");
+      debtCards.className = "mj-finance-cards";
+      debtCards.appendChild(makeKellyCard(state));
+      debts.appendChild(debtCards);
+
+      grid.appendChild(debts);
+    }
 
     if (lastSaved) {
       const starSignature = [
