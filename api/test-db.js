@@ -6,7 +6,8 @@ export default async function handler(request, response) {
       SELECT
         current_database() AS base,
         current_schema() AS esquema,
-        current_user AS usuario
+        current_user AS usuario,
+        current_setting('neon.branch_id', true) AS branch_id
     `;
 
     const tablas = await sql`
@@ -18,7 +19,12 @@ export default async function handler(request, response) {
 
     return response.status(200).json({
       ok: true,
-      conexion: result[0],
+      conexion: {
+        base: result[0].base,
+        esquema: result[0].esquema,
+        usuario: result[0].usuario,
+        branch_id: result[0].branch_id
+      },
       tablas: tablas.map(t => t.table_name)
     });
 
