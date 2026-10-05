@@ -217,6 +217,7 @@
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return fallback;
+
       const value = JSON.parse(raw);
       return value ?? fallback;
     } catch {
@@ -685,26 +686,60 @@
     bind(button);
   }
 
-  function playNewPaymentStars(type = "junta") {   const layer = $("#celebrationLayer");   if (!layer) return;    // Limpia cualquier celebración anterior.   layer     .querySelectorAll(".mj-payment-star, .celebrate-piece")     .forEach(el => el.remove());    const symbols = type === "kelly"     ? ["💗", "💌", "✦", "✨", "♡"]     : ["🌸", "✦", "🌷", "♡", "✨"];    const width = window.innerWidth || 800;   const height = window.innerHeight || 700;    // Pequeño "plop" central.   const center = document.createElement("span");   center.className = "celebrate-piece";   center.textContent = type === "kelly" ? "💗" : "🌸";    center.style.position = "fixed";   center.style.left = "50%";   center.style.top = "42%";   center.style.zIndex = "70";   center.style.pointerEvents = "none";   center.style.fontSize = "28px";   center.style.opacity = "0";    layer.appendChild(center);    center.animate(     [       {         opacity: 0,         transform: "translate(-50%, -50%) scale(.25)"       },       {         opacity: 1,         transform: "translate(-50%, -50%) scale(1.25)",         offset: 0.35       },       {         opacity: 0,         transform: "translate(-50%, -50%) scale(.9)"       }     ],     {       duration: 650,       easing: "cubic-bezier(.2,.8,.2,1)",       fill: "forwards"     }   );    setTimeout(() => center.remove(), 750);    // Explosión de emojis desde el centro.   for (let i = 0; i < 22; i++) {     const piece = document.createElement("span");      piece.className = "celebrate-piece";     piece.textContent =       symbols[Math.floor(Math.random() * symbols.length)];      const x = (Math.random() - 0.5) * width * 0.72;     const y = (Math.random() - 0.5) * height * 0.55;     const scale = 0.7 + Math.random() * 0.9;     const rotation = (Math.random() - 0.5) * 360;     const duration = 900 + Math.random() * 800;     const delay = Math.random() * 130;      piece.style.position = "fixed";     piece.style.left = "50%";     piece.style.top = "42%";     piece.style.zIndex = "65";     piece.style.pointerEvents = "none";     piece.style.fontSize = `${16 + Math.random() * 8}px`;     piece.style.opacity = "0";      layer.appendChild(piece);      piece.animate(       [         {           opacity: 0,           transform:             "translate(-50%, -50%) scale(.3) rotate(0deg)"         },         {           opacity: 1,           transform:             "translate(-50%, -50%) scale(1.05) rotate(0deg)",           offset: 0.16         },         {           opacity: 0,           transform:             `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) ` +             `scale(${scale}) rotate(${rotation}deg)`         }       ],       {         duration,         delay,         easing: "cubic-bezier(.16,.8,.25,1)",         fill: "forwards"       }     );      setTimeout(       () => piece.remove(),       duration + delay + 100     );   } }
+  function playNewPaymentStars(type = "junta") {
     const layer = $("#celebrationLayer");
     if (!layer) return;
 
+    layer
+      .querySelectorAll(".celebrate-piece, .mj-payment-star")
+      .forEach(el => el.remove());
+
     const symbols = type === "kelly"
-      ? ["✦", "💗", "✨", "♡", "✦"]
-      : ["✦", "✧", "🌸", "✨", "★"];
+      ? ["💗", "♡", "💌", "✦", "✨"]
+      : ["🌸", "🌷", "✦", "✧", "✨"];
 
-    for (let i = 0; i < 14; i++) {
-      const star = document.createElement("span");
-      star.className = "mj-payment-star";
-      star.textContent = symbols[Math.floor(Math.random() * symbols.length)];
-      star.style.setProperty("--mj-star-x", `${(Math.random() - .5) * 72}vw`);
-      star.style.setProperty("--mj-star-y", `${(Math.random() - .5) * 58}vh`);
-      star.style.setProperty("--mj-star-r", `${(Math.random() - .5) * 70}deg`);
-      star.style.setProperty("--mj-star-scale", `${.72 + Math.random() * .62}`);
-      star.style.setProperty("--mj-star-delay", `${Math.random() * .16}s`);
-      layer.appendChild(star);
+    // Pequeño plop central antes de que salgan los emojis.
+    const plop = document.createElement("span");
+    plop.className = "celebrate-piece";
+    plop.textContent = type === "kelly" ? "💗" : "🌸";
+    plop.style.setProperty("--x", "0px");
+    plop.style.setProperty("--y", "0px");
+    plop.style.setProperty("--scale", "1");
+    plop.style.setProperty("--rot", "0deg");
+    plop.style.setProperty("--duration", "650ms");
+    plop.style.fontSize = "30px";
+    plop.style.animation = "none";
+    plop.animate(
+      [
+        { opacity: 0, transform: "translate(-50%,-50%) scale(.35)" },
+        { opacity: 1, transform: "translate(-50%,-50%) scale(1.18)" },
+        { opacity: 0, transform: "translate(-50%,-50%) scale(.92)" }
+      ],
+      { duration: 650, easing: "cubic-bezier(.16,.8,.25,1)" }
+    );
+    layer.appendChild(plop);
+    setTimeout(() => plop.remove(), 700);
 
-      setTimeout(() => star.remove(), 1500);
+    // Explosión compacta desde el centro, como el efecto original.
+    for (let i = 0; i < 18; i++) {
+      const piece = document.createElement("span");
+      piece.className = "celebrate-piece";
+      piece.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+
+      const angle = (Math.PI * 2 * i) / 18 + (Math.random() - .5) * .35;
+      const distance = 95 + Math.random() * 190;
+      const x = Math.cos(angle) * distance;
+      const y = Math.sin(angle) * distance * .78;
+
+      piece.style.setProperty("--x", `${x}px`);
+      piece.style.setProperty("--y", `${y}px`);
+      piece.style.setProperty("--scale", `${.72 + Math.random() * .52}`);
+      piece.style.setProperty("--rot", `${(Math.random() - .5) * 70}deg`);
+      piece.style.setProperty("--duration", `${900 + Math.random() * 350}ms`);
+      piece.style.animationDelay = `${Math.random() * 80}ms`;
+
+      layer.appendChild(piece);
+      setTimeout(() => piece.remove(), 1450);
     }
   }
 
@@ -1375,17 +1410,6 @@
   async function delegateClicks(event) {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    // Evita guardar dos veces cuando se hace doble clic
-// en Guardar aporte o Guardar pago.
-const paymentSaveButton = target.closest(
-  "#saveJuntaPayment, #saveKellyPayment"
-);
-
-if (paymentSaveButton && event.detail > 1) {
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  return;
-}
 
     const historyButton = target.closest("[data-junta-history]");
     if (historyButton && !sharedMode) {
