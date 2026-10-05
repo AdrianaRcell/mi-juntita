@@ -17,10 +17,7 @@ export async function POST(request) {
 
     if (origin && origin !== url.origin) {
       return json(
-        {
-          ok: false,
-          error: "Origen no permitido.",
-        },
+        { ok: false, error: "Origen no permitido." },
         403
       );
     }
@@ -36,7 +33,6 @@ export async function POST(request) {
 
     let payment = null;
 
-    // 1. Intentar encontrarlo por ID.
     if (String(paymentId).trim() !== "") {
       const byId = await sql`
         SELECT
@@ -50,14 +46,9 @@ export async function POST(request) {
         WHERE CAST(id AS TEXT) = ${String(paymentId)}
         LIMIT 1
       `;
-
-      if (byId.length) {
-        payment = byId[0];
-      }
+      if (byId.length) payment = byId[0];
     }
 
-    // 2. Si el ID local no coincide con Neon,
-    //    intentar por comprobante.
     if (!payment && receiptUrl) {
       const byReceipt = await sql`
         SELECT
@@ -71,13 +62,9 @@ export async function POST(request) {
         WHERE receipt_url = ${receiptUrl}
         LIMIT 1
       `;
-
-      if (byReceipt.length) {
-        payment = byReceipt[0];
-      }
+      if (byReceipt.length) payment = byReceipt[0];
     }
 
-    // 3. Último recurso: buscar por los datos del pago.
     if (!payment && amount > 0 && date) {
       const matches = await sql`
         SELECT
@@ -96,9 +83,7 @@ export async function POST(request) {
         LIMIT 2
       `;
 
-      if (matches.length === 1) {
-        payment = matches[0];
-      }
+      if (matches.length === 1) payment = matches[0];
 
       if (matches.length > 1) {
         return json(
@@ -123,7 +108,6 @@ export async function POST(request) {
       );
     }
 
-    // 4. ELIMINAR EL REGISTRO REAL DE NEON.
     const deleted = await sql`
       DELETE FROM kelly_payments
       WHERE id = ${payment.id}
@@ -148,7 +132,6 @@ export async function POST(request) {
 
     const deletedPayment = deleted[0];
 
-    // 5. Eliminar el comprobante de Blob.
     let receiptDeleted = true;
 
     if (deletedPayment.receipt_url) {
@@ -156,7 +139,6 @@ export async function POST(request) {
         await del(deletedPayment.receipt_url);
       } catch (blobError) {
         receiptDeleted = false;
-
         console.warn(
           "El pago fue eliminado de Neon, pero no se pudo eliminar el comprobante:",
           blobError
@@ -164,11 +146,8 @@ export async function POST(request) {
       }
     }
 
-    // 6. Recalcular Kelly desde Neon.
     const kellyRows = await sql`
-      SELECT
-        id,
-        original
+      SELECT id, original
       FROM kelly
       LIMIT 1
     `;
@@ -201,14 +180,9 @@ export async function POST(request) {
 
     return json({
       ok: true,
-
       deletedPaymentId: deletedPayment.id,
-      deletedAmount: Number(
-        deletedPayment.amount || 0
-      ),
-
+      deletedAmount: Number(deletedPayment.amount || 0),
       receiptDeleted,
-
       kelly: {
         original,
         paid,
@@ -216,7 +190,6 @@ export async function POST(request) {
         payments: remainingPayments,
       },
     });
-
   } catch (error) {
     console.error(
       "Error eliminando pago de Kelly:",
