@@ -24,7 +24,6 @@ export async function POST(request) {
 
     const body = await request.json().catch(() => null);
     const paymentId = body?.paymentId;
-    const juntaId = body?.juntaId;
 
     if (
       paymentId === undefined ||
@@ -32,44 +31,29 @@ export async function POST(request) {
       String(paymentId).trim() === ""
     ) {
       return json(
-        { ok: false, error: "Falta el ID del aporte." },
+        { ok: false, error: "Falta el ID del pago." },
         400
       );
     }
 
     const rows = await sql`
-      SELECT id, junta_id, receipt_url
-      FROM junta_payments
+      SELECT id, receipt_url
+      FROM kelly_payments
       WHERE id = ${paymentId}
       LIMIT 1
     `;
 
     if (!rows.length) {
       return json(
-        { ok: false, error: "No se encontró el aporte." },
+        { ok: false, error: "No se encontró el pago." },
         404
       );
     }
 
-    const row = rows[0];
-
-    if (
-      juntaId &&
-      String(row.junta_id) !== String(juntaId)
-    ) {
-      return json(
-        {
-          ok: false,
-          error: "El aporte no pertenece a esa Junta.",
-        },
-        403
-      );
-    }
-
-    const receiptUrl = row.receipt_url || "";
+    const receiptUrl = rows[0].receipt_url || "";
 
     await sql`
-      DELETE FROM junta_payments
+      DELETE FROM kelly_payments
       WHERE id = ${paymentId}
     `;
 
@@ -87,11 +71,10 @@ export async function POST(request) {
     return json({
       ok: true,
       deletedPaymentId: paymentId,
-      juntaId: row.junta_id,
     });
   } catch (error) {
     console.error(
-      "Error eliminando aporte de Junta:",
+      "Error eliminando pago de Kelly:",
       error
     );
 
@@ -101,7 +84,7 @@ export async function POST(request) {
         error:
           error instanceof Error
             ? error.message
-            : "No se pudo eliminar el aporte.",
+            : "No se pudo eliminar el pago.",
       },
       500
     );
