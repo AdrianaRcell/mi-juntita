@@ -17,10 +17,7 @@ export async function POST(request) {
 
     if (origin && origin !== url.origin) {
       return json(
-        {
-          ok: false,
-          error: "Origen no permitido.",
-        },
+        { ok: false, error: "Origen no permitido." },
         403
       );
     }
@@ -37,7 +34,6 @@ export async function POST(request) {
 
     let payment = null;
 
-    // 1. Buscar por ID.
     if (String(paymentId).trim() !== "") {
       const byId = await sql`
         SELECT
@@ -52,13 +48,9 @@ export async function POST(request) {
         WHERE CAST(id AS TEXT) = ${String(paymentId)}
         LIMIT 1
       `;
-
-      if (byId.length) {
-        payment = byId[0];
-      }
+      if (byId.length) payment = byId[0];
     }
 
-    // 2. Buscar por comprobante.
     if (!payment && receiptUrl) {
       const byReceipt = await sql`
         SELECT
@@ -73,13 +65,9 @@ export async function POST(request) {
         WHERE receipt_url = ${receiptUrl}
         LIMIT 1
       `;
-
-      if (byReceipt.length) {
-        payment = byReceipt[0];
-      }
+      if (byReceipt.length) payment = byReceipt[0];
     }
 
-    // 3. Buscar por los datos del aporte.
     if (!payment && amount > 0 && date) {
       let matches;
 
@@ -122,9 +110,7 @@ export async function POST(request) {
         `;
       }
 
-      if (matches.length === 1) {
-        payment = matches[0];
-      }
+      if (matches.length === 1) payment = matches[0];
 
       if (matches.length > 1) {
         return json(
@@ -163,7 +149,6 @@ export async function POST(request) {
       );
     }
 
-    // 4. ELIMINAR EL REGISTRO REAL DE NEON.
     const deleted = await sql`
       DELETE FROM junta_payments
       WHERE id = ${payment.id}
@@ -190,7 +175,6 @@ export async function POST(request) {
 
     const deletedPayment = deleted[0];
 
-    // 5. Eliminar comprobante.
     let receiptDeleted = true;
 
     if (deletedPayment.receipt_url) {
@@ -210,21 +194,13 @@ export async function POST(request) {
 
     return json({
       ok: true,
-
-      deletedPaymentId:
-        deletedPayment.id,
-
-      deletedAmount:
-        Number(
-          deletedPayment.amount || 0
-        ),
-
-      juntaId:
-        deletedPayment.junta_id,
-
+      deletedPaymentId: deletedPayment.id,
+      deletedAmount: Number(
+        deletedPayment.amount || 0
+      ),
+      juntaId: deletedPayment.junta_id,
       receiptDeleted,
     });
-
   } catch (error) {
     console.error(
       "Error eliminando aporte de Junta:",
