@@ -31,6 +31,8 @@
   // Cuando terminemos las pruebas, cambia esta línea por REAL_ARCHIVE_MS.
   const ARCHIVE_DURATION_MS = TEST_ARCHIVE_MS;
 
+  // Limpieza temporal de pruebas conocidas.
+  // Esto evita que una "Junta Test" vuelva a aparecer mientras terminamos las pruebas.
   const TEST_JUNTA_NAMES = new Set([
     "junta test",
     "junta de prueba",
@@ -43,6 +45,8 @@
     return TEST_JUNTA_NAMES.has(name);
   }
 
+  // Cuando Kelly alcanza el 100 %, se retira de la interfaz.
+  // Conservamos sus pagos en Neon para no perder el historial.
   function isKellyCompleted(state) {
     const original = Number(state?.kelly?.original || 0);
     if (original <= 0) return false;
@@ -93,6 +97,50 @@
   function closeModal() {
     const backdrop = $("#modalBackdrop");
     if (backdrop) backdrop.hidden = true;
+    document.documentElement.classList.remove("mj-detail-open");
+  }
+
+  function injectDeleteStyles() {
+    if (document.getElementById("mj-delete-styles")) return;
+
+    const style = document.createElement("style");
+    style.id = "mj-delete-styles";
+    style.textContent = `
+      .mj-delete-zone{
+        margin-top:14px;
+        padding-top:12px;
+        border-top:1px solid var(--line);
+      }
+
+      .mj-delete-btn{
+        width:100%;
+        min-height:42px;
+        border:1px solid color-mix(in srgb,#c85f7f 32%,var(--line));
+        border-radius:14px;
+        background:color-mix(in srgb,#f1b0c0 18%,var(--card-solid));
+        color:#9d3b5d;
+        font-weight:750;
+        cursor:pointer;
+        transition:transform .18s ease,filter .2s ease;
+      }
+
+      .mj-delete-btn:hover{
+        filter:brightness(.98);
+        transform:translateY(-1px);
+      }
+
+      .mj-delete-btn:active{
+        transform:scale(.98);
+      }
+
+      .mj-delete-btn:disabled{
+        opacity:.65;
+        cursor:wait;
+        transform:none;
+      }
+    `;
+
+    document.head.appendChild(style);
   }
 
   function getShareToken() {
@@ -169,7 +217,6 @@
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return fallback;
-
       const value = JSON.parse(raw);
       return value ?? fallback;
     } catch {
@@ -254,633 +301,667 @@
     cleanCompletedArchive();
 
     const archive = getCompletedArchive();
-
-    for (const junta of state.juntas || []) {
-      if (!junta?.id) continue;
-      if (isKnownTestJunta(junta)) continue;
-
-      const paid = getJuntaPaid(junta);
-      const goal = Number(junta.goal || 0);
-
-      if (goal <= 0 || paid < goal) continue;
-
-      const alreadyArchived = archive.find(
-        item => item?.id === junta.id
-      );
-
-      if (!alreadyArchived) {
-        archive.push({
-          id: junta.id,
-          name: junta.name || "Junta",
-          goal,
-          normal: Number(junta.normal || 0),
-          modality: junta.modality || "",
-          completedAt: Date.now(),
-          expiresAt: Date.now() + ARCHIVE_DURATION_MS,
-          payments: Array.isArray(junta.payments)
-            ? junta.payments.map(item => ({ ...item }))
-            : []
-        });
-      }
-    }
-
-    writeJsonStorage(ARCHIVE_KEY, archive);
-
-    for (const junta of state.juntas || []) {
-      if (!junta?.id) continue;
-
-      const paid = getJuntaPaid(junta);
-      const goal = Number(junta.goal || 0);
-
-      if (
-        !isKnownTestJunta(junta) &&
-        goal > 0 &&
-        paid >= goal
-      ) {
-        const hidden = new Set(getHiddenCompletedIds());
-        hidden.add(junta.id);
-        writeJsonStorage(
-          HIDDEN_COMPLETED_KEY,
-          Array.from(hidden)
-        );
-      }
-    }
-  }
-
-  function restoreVisibleJuntas(state) {
-    if (!state) return;
-
     const hidden = new Set(getHiddenCompletedIds());
-    const archive = getCompletedArchive();
+    const byId = new Map(
+      archive.map(item => [item.id, item])
+    );
 
-    state.juntas = (state.juntas || []).filter(junta => {
-      if (!junta?.id) return false;
+    let changed = false;
+
+    for (const junta of state.juntas || []) {
+      if (!junta?.id || hidden.has(junta.id)) {
+        continue;
+      }
 
       if (isKnownTestJunta(junta)) {
-        return true;
-      }
-
-      const goal = Number(junta.goal || 0);
-      const paid = getJuntaPaid(junta);
-
-      if (goal > 0 && paid >= goal) {
         hidden.add(junta.id);
-        return false;
+        changed = true;
+        continue;
       }
 
-      if (hidden.has(junta.id)) {
-        const archiveItem = archive.find(
-          item => item?.id === junta.id
-        );
+      const paid = getJuntaPaid(junta);
+      const goal = Number(junta.goal || 0);
 
-        if (archiveItem && Number(archiveItem.expiresAt) > Date.now()) {
-          return false;
-        }
-
-        hidden.delete(junta.id);
+      if (goal <= 0 || paid < goal) {
+        continue;
       }
 
-      return true;
-    });
+      const current = byId.get(junta.id);
 
-    writeJsonStorage(
-      HIDDEN_COMPLETED_KEY,
-      Array.from(hidden)
-    );
+      if (current) {
+        continue;
+      }
+
+      const completedAt = Date.now();
+
+      byId.set(junta.id, {
+        id: junta.id,
+        name: junta.name || "Junta",
+        goal,
+        normal: Number(junta.normal || 0),
+        modality: junta.modality || "",
+        variable: Boolean(junta.variable),
+        paid,
+        completedAt,
+        expiresAt: completedAt + ARCHIVE_DURATION_MS,
+        payments: Array.isArray(junta.payments)
+          ? junta.payments.map(payment => ({
+              id: payment.id,
+              amount: Number(payment.amount || 0),
+              date: payment.date || "",
+              method: payment.method || "",
+              note: payment.note || "",
+              receiptUrl: payment.receiptUrl || payment.receiptData || ""
+            }))
+          : []
+      });
+
+      changed = true;
+    }
+
+    if (changed) {
+      writeJsonStorage(
+        ARCHIVE_KEY,
+        Array.from(byId.values())
+      );
+    }
+
+    scheduleArchiveCleanup();
   }
 
-  function getArchiveForDisplay() {
-    return cleanCompletedArchive().filter(
-      item => item && Number(item.expiresAt) > Date.now()
-    );
+  function remainingArchiveText(expiresAt) {
+    const remaining =
+      Math.max(0, Number(expiresAt || 0) - Date.now());
+
+    if (remaining < 60 * 1000) {
+      return `${Math.max(1, Math.ceil(remaining / 1000))} s para quitar esta Junta`;
+    }
+
+    const minutes = Math.ceil(remaining / (60 * 1000));
+    return `${minutes} min para quitar esta Junta`;
   }
 
-  function makeButton(html, attrs = "") {
-    return `<button type="button" ${attrs}>${html}</button>`;
+  function scheduleArchiveCleanup() {
+    if (archiveCleanupTimer) {
+      clearTimeout(archiveCleanupTimer);
+      archiveCleanupTimer = null;
+    }
+
+    const archive = getCompletedArchive();
+    if (!archive.length) return;
+
+    const next = archive
+      .map(item => Number(item.expiresAt || 0))
+      .filter(Boolean)
+      .sort((a, b) => a - b)[0];
+
+    if (!next) return;
+
+    const delay = Math.max(250, next - Date.now() + 50);
+
+    archiveCleanupTimer = setTimeout(() => {
+      cleanCompletedArchive();
+      enhanceMain();
+    }, delay);
   }
 
-  function injectExtraStyles() {
-    if ($("#mj-enhancements-style")) return;
-
-    const style = document.createElement("style");
-    style.id = "mj-enhancements-style";
-    style.textContent = `
-      .mj-section-title{
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        gap:10px;
-        margin:24px 0 10px;
-      }
-
-      .mj-section-title h2{
-        margin:0;
-        font-size:19px;
-      }
-
-      .mj-section-title span{
-        color:var(--muted);
-        font-size:11px;
-      }
-
-      .mj-kelly-card{
-        margin-top:18px;
-      }
-
-      .mj-history-wrap{
-        margin-top:18px;
-        border-top:1px solid var(--line);
-        padding-top:18px;
-      }
-
-      .mj-history-btn{
-        width:100%;
-        justify-content:center;
-        display:flex;
-        align-items:center;
-        gap:8px;
-      }
-
-      .mj-share-btn{
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        gap:8px;
-      }
-
-      .mj-card-actions{
-        display:grid;
-        grid-template-columns:repeat(2,minmax(0,1fr));
-        gap:9px;
-        margin-top:16px;
-      }
-
-      .mj-card-actions button{
-        min-width:0;
-      }
-
-      .mj-card-actions .wide{
-        grid-column:1/-1;
-      }
-
-      .mj-history-row{
-        width:100%;
-        border:1px solid var(--line);
-        background:var(--card);
-        color:var(--text);
-        border-radius:16px;
-        padding:13px;
-        margin-bottom:9px;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        gap:12px;
-        text-align:left;
-        cursor:pointer;
-      }
-
-      .mj-history-row:hover{
-        transform:translateY(-2px);
-      }
-
-      .mj-history-main{
-        min-width:0;
-      }
-
-      .mj-history-main strong{
-        display:block;
-        font-size:13px;
-      }
-
-      .mj-history-main small{
-        display:block;
-        color:var(--muted);
-        font-size:10px;
-        margin-top:4px;
-      }
-
-      .mj-history-amount{
-        font-weight:800;
-        white-space:nowrap;
-      }
-
-      .mj-history-arrow{
-        color:var(--muted);
-        font-size:19px;
-        flex:none;
-      }
-
-      .mj-detail-shell{
-        display:grid;
-        gap:16px;
-      }
-
-      .mj-back-btn{
-        justify-self:start;
-      }
-
-      .mj-detail-heading{
-        display:flex;
-        align-items:center;
-        gap:12px;
-      }
-
-      .mj-detail-icon{
-        width:48px;
-        height:48px;
-        border-radius:16px;
-        display:grid;
-        place-items:center;
-        background:color-mix(in srgb,var(--pink2) 65%,transparent);
-        font-size:25px;
-      }
-
-      .mj-detail-heading h2{
-        margin:0;
-      }
-
-      .mj-detail-heading p{
-        margin:3px 0 0;
-        color:var(--muted);
-        font-size:11px;
-      }
-
-      .mj-detail-grid{
-        display:grid;
-        grid-template-columns:1fr 1fr;
-        gap:10px;
-      }
-
-      .mj-detail-item{
-        border:1px solid var(--line);
-        background:var(--card);
-        border-radius:16px;
-        padding:13px;
-      }
-
-      .mj-detail-item.full{
-        grid-column:1/-1;
-      }
-
-      .mj-detail-item span{
-        display:block;
-        color:var(--muted);
-        font-size:10px;
-        margin-bottom:5px;
-      }
-
-      .mj-detail-item strong{
-        font-size:15px;
-      }
-
-      .mj-detail-note{
-        white-space:pre-wrap;
-      }
-
-      .mj-receipt-preview{
-        width:100%;
-        max-height:340px;
-        object-fit:contain;
-        border-radius:18px;
-        border:1px solid var(--line);
-        background:#fff;
-        cursor:pointer;
-      }
-
-      .mj-detail-actions{
-        display:grid;
-        grid-template-columns:1fr 1fr;
-        gap:9px;
-      }
-
-      .mj-delete-btn{
-        border:1px solid rgba(190,80,110,.3);
-        background:color-mix(in srgb,#f0a3b9 22%,var(--card-solid));
-        color:#9f395d;
-      }
-
-      .mj-delete-btn:hover{
-        filter:brightness(.98);
-      }
-
-      .mj-confirm-shell{
-        text-align:center;
-        padding:8px 0;
-      }
-
-      .mj-confirm-icon{
-        font-size:34px;
-        margin-bottom:9px;
-      }
-
-      .mj-confirm-shell h2{
-        margin-bottom:8px;
-      }
-
-      .mj-confirm-shell .intro{
-        line-height:1.55;
-      }
-
-      .mj-confirm-note{
-        border:1px solid var(--line);
-        border-radius:14px;
-        padding:11px;
-        color:var(--muted);
-        font-size:11px;
-        margin-top:12px;
-      }
-
-      .mj-confirm-actions{
-        justify-content:center;
-      }
-
-      .mj-danger-btn{
-        border:0;
-        border-radius:14px;
-        padding:11px 13px;
-        cursor:pointer;
-        background:#c85f7f;
-        color:#fff;
-      }
-
-      .mj-danger-btn:disabled{
-        opacity:.65;
-        cursor:wait;
-      }
-
-      .mj-archive-card{
-        margin-top:12px;
-        padding:16px;
-        border:1px solid var(--line);
-        background:var(--card);
-        border-radius:20px;
-      }
-
-      .mj-archive-card h3{
-        margin:0 0 4px;
-      }
-
-      .mj-archive-card p{
-        margin:0;
-        color:var(--muted);
-        font-size:11px;
-      }
-
-      .mj-photo-shell{
-        display:grid;
-        gap:12px;
-      }
-
-      .mj-large-receipt{
-        max-width:100%;
-        max-height:70vh;
-        border-radius:18px;
-        display:block;
-        margin:auto;
-      }
-
-      .mj-empty-history{
-        color:var(--muted);
-        font-size:12px;
-        padding:14px 0;
-      }
-
-      .mj-shared-history .mj-delete-btn,
-      .mj-shared-history [data-mj-delete-payment],
-      .mj-shared-history [data-mj-confirm-delete-payment]{
-        display:none !important;
-      }
-
-      .mj-shared-history .mj-detail-actions{
-        grid-template-columns:1fr;
-      }
-
-      @media(max-width:760px){
-        .mj-detail-grid{
-          grid-template-columns:1fr;
-        }
-
-        .mj-detail-item.full{
-          grid-column:auto;
-        }
-
-        .mj-card-actions{
-          grid-template-columns:1fr;
-        }
-
-        .mj-card-actions .wide{
-          grid-column:auto;
-        }
-
-        .mj-detail-actions{
-          grid-template-columns:1fr;
-        }
-      }
-    `;
-
-    document.head.appendChild(style);
-  }
-
-  function getKellyPaid(state) {
-    return (state?.kelly?.payments || []).reduce(
-      (sum, payment) =>
-        sum + Number(payment?.amount || 0),
-      0
-    );
-  }
-
-  function getKellyOriginal(state) {
-    return Number(state?.kelly?.original || 2800);
-  }
-
-  function getKellyBalance(state) {
-    return Math.max(
-      0,
-      getKellyOriginal(state) - getKellyPaid(state)
-    );
-  }
-
-  function getJuntaHistory(junta) {
-    const payments = Array.isArray(junta?.payments)
-      ? junta.payments
-      : [];
-
-    return [...payments].sort((a, b) => {
-      const da = String(a?.date || "");
-      const db = String(b?.date || "");
-
-      if (da === db) {
-        return String(b?.id || "").localeCompare(
-          String(a?.id || "")
-        );
-      }
-
-      return db.localeCompare(da);
-    });
-  }
-
-  function getKellyHistory(state) {
-    const payments = Array.isArray(state?.kelly?.payments)
-      ? state.kelly.payments
-      : [];
-
-    return [...payments].sort((a, b) => {
-      const da = String(a?.date || "");
-      const db = String(b?.date || "");
-
-      if (da === db) {
-        return String(b?.id || "").localeCompare(
-          String(a?.id || "")
-        );
-      }
-
-      return db.localeCompare(da);
-    });
-  }
-
-  function createHistoryRow(type, parentId, payment) {
-    const receipt =
-      payment?.receiptUrl ||
-      payment?.receipt_url ||
-      payment?.receiptData ||
-      "";
-
-    return `
-      <button
-        type="button"
-        class="mj-history-row"
-        data-mj-detail-type="${esc(type)}"
-        data-mj-detail-parent="${esc(parentId || "")}"
-        data-mj-detail-id="${esc(payment?.id || "")}"
-      >
-        <span class="mj-history-main">
-          <strong>${money(payment?.amount)}</strong>
-          <small>
-            ${formatDate(payment?.date)}
-            · ${esc(payment?.method || "Sin método")}
-            ${receipt ? " · 📷" : ""}
-          </small>
-        </span>
-        <span class="mj-history-arrow">›</span>
-      </button>
-    `;
-  }
-
-  function openHistory(type, parentId = "") {
-    if (type === "junta") {
-      const junta = sharedMode
-        ? sharedPayload?.junta
-        : (getState()?.juntas || []).find(
-            item => String(item.id) === String(parentId)
-          );
-
-      if (!junta) {
-        toast("No se encontró la Junta.");
-        return;
-      }
-
-      const history = getJuntaHistory(junta);
-
-      openModal(`
-        <div class="mj-history-shell">
-          <button
-            class="secondary mj-back-btn"
-            type="button"
-            data-mj-close-history="true"
-          >
-            ← Volver
-          </button>
-
-          <div class="mj-detail-heading" style="margin-top:14px">
-            <span class="mj-detail-icon">🌸</span>
-            <div>
-              <h2>Movimientos</h2>
-              <p>${esc(junta.name || "Junta")}</p>
-            </div>
+  function makePreviousJuntaCard(item, index = 0) {
+    const article = document.createElement("article");
+    article.className = "mj-previous-junta";
+    article.style.setProperty("--mj-delay", `${index * 70}ms`);
+
+    if (
+      lastSaved?.type === "junta" &&
+      lastSaved.parentId === item.id
+    ) {
+      article.classList.add("mj-archive-new");
+    }
+
+    const goal = Number(item.goal || 0);
+    const paid = Number(item.paid || 0);
+    const pct = goal
+      ? Math.min(100, paid / goal * 100)
+      : 100;
+
+    article.innerHTML = `
+      <div class="mj-previous-icon">✓</div>
+
+      <div class="mj-previous-main">
+        <div class="mj-previous-top">
+          <div>
+            <b>${esc(item.name || "Junta")}</b>
+            <small>Completada · ${esc(formatDate(item.completedAt ? new Date(item.completedAt).toISOString().slice(0,10) : ""))}</small>
           </div>
-
-          <div class="history" style="margin-top:18px">
-            ${
-              history.length
-                ? history.map(payment =>
-                    createHistoryRow(
-                      "junta",
-                      junta.id,
-                      payment
-                    )
-                  ).join("")
-                : `<div class="mj-empty-history">Todavía no hay movimientos registrados.</div>`
-            }
-          </div>
+          <strong>${money(paid)}</strong>
         </div>
-      `);
 
-      currentDetailContext = {
-        type: "junta",
-        parentId: junta.id,
-        paymentId: null
-      };
+        <div class="mj-previous-bar">
+          <span style="width:${pct}%"></span>
+        </div>
 
+        <div class="mj-previous-meta">
+          <span>Meta ${money(goal)}</span>
+          <span>100% completada</span>
+        </div>
+
+        <div class="mj-previous-actions">
+          <button
+            class="secondary"
+            type="button"
+            data-mj-archive-history="true"
+            data-mj-archive-id="${esc(item.id)}"
+          >
+            Ver historial →
+          </button>
+          <small class="mj-archive-expiry" data-mj-expiry="${esc(item.id)}">
+            ${esc(remainingArchiveText(item.expiresAt))}
+          </small>
+        </div>
+      </div>
+    `;
+
+    return article;
+  }
+
+  function appendPreviousJuntas(container) {
+    const archive = cleanCompletedArchive()
+      .slice()
+      .sort(
+        (a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0)
+      );
+
+    if (!archive.length) return;
+
+    const wrapper = document.createElement("section");
+    wrapper.className = "mj-previous-section";
+    wrapper.innerHTML = `
+      <div class="mj-previous-heading">
+        <div>
+          <div class="mj-section-eyebrow">HISTORIAL</div>
+          <h3>Juntas anteriores</h3>
+          <p>Las juntas completadas aparecen aquí por un tiempo.</p>
+        </div>
+        <span class="mj-previous-count">${archive.length}</span>
+      </div>
+    `;
+
+    const list = document.createElement("div");
+    list.className = "mj-previous-list";
+
+    archive.forEach((item, index) => {
+      list.appendChild(
+        makePreviousJuntaCard(item, index)
+      );
+    });
+
+    wrapper.appendChild(list);
+    container.appendChild(wrapper);
+  }
+
+  function paymentSignature(state) {
+    const juntaPart = (state.juntas || [])
+      .map(j => {
+        const last = j.payments?.[j.payments.length - 1];
+        return `${j.id}:${j.payments?.length || 0}:${last?.id || ""}`;
+      })
+      .join("|");
+
+    const kp = state.kelly?.payments || [];
+    const lastKelly = kp[kp.length - 1];
+    const kellyPart = `kelly:${kp.length}:${lastKelly?.id || ""}`;
+
+    return `${juntaPart}|${kellyPart}`;
+  }
+
+  function detectNewRecord(state) {
+    const signature = paymentSignature(state);
+
+    if (lastSignature === null) {
+      lastSignature = signature;
       return;
+    }
+
+    if (signature === lastSignature) return;
+
+    for (const junta of state.juntas || []) {
+      const last = junta.payments?.[junta.payments.length - 1];
+      if (last && signature.includes(`${junta.id}:${junta.payments.length}:${last.id}`)) {
+        lastSaved = { type: "junta", parentId: junta.id, paymentId: last.id };
+      }
+    }
+
+    const kp = state.kelly?.payments || [];
+    const lastKelly = kp[kp.length - 1];
+    if (lastKelly) {
+      lastSaved = { type: "kelly", paymentId: lastKelly.id };
+    }
+
+    lastSignature = signature;
+  }
+
+  function makeSectionHeader(icon, eyebrow, title, subtitle) {
+    const header = document.createElement("div");
+    header.className = "mj-section-head";
+    header.innerHTML = `
+      <div class="mj-section-icon">${icon}</div>
+      <div>
+        <div class="mj-section-eyebrow">${esc(eyebrow)}</div>
+        <h2>${esc(title)}</h2>
+        <p>${esc(subtitle)}</p>
+      </div>
+    `;
+    return header;
+  }
+
+  function makeKellyCard(state) {
+    const original = Number(state.kelly?.original || 0);
+    const paid = (state.kelly?.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const balance = Math.max(0, original - paid);
+    const pct = original > 0 ? Math.min(100, paid / original * 100) : 0;
+    const payments = state.kelly?.payments?.length || 0;
+
+    const article = document.createElement("article");
+    article.className = "card mj-kelly-card";
+    article.dataset.mjKellyCard = "true";
+
+    if (lastSaved?.type === "kelly") {
+      article.classList.add("mj-saved-card");
+    }
+
+    article.innerHTML = `
+      <div class="card-head">
+        <div>
+          <div class="title-line">
+            <span class="symbol">💗</span>
+            <h2>Kelly</h2>
+          </div>
+          <div class="sub">Deuda · sin fecha límite</div>
+        </div>
+
+      </div>
+
+      <div class="money mj-kelly-money">
+        ${money(balance)}
+        <small>saldo pendiente</small>
+      </div>
+
+      <div class="stats">
+        <span class="pill">Deuda ${money(original)}</span>
+        <span class="pill">Pagado ${money(paid)}</span>
+        <span class="pill">${payments} ${payments === 1 ? "pago" : "pagos"}</span>
+      </div>
+
+      <div class="progress-row">
+        <div class="progress-meta">
+          <span>Pagado</span>
+          <b>${pct.toFixed(0)}%</b>
+        </div>
+        <div class="progress mj-kelly-progress">
+          <span style="width:${pct}%"></span>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button class="primary" type="button" data-kelly-add-enhanced="true">
+          💗 Registrar pago
+        </button>
+        <button class="secondary mj-card-history-btn" type="button" data-kelly-history-enhanced="true">
+          📋 Historial
+        </button>
+        <button class="secondary" type="button" data-kelly-share-enhanced="true">
+          ↗ Compartir
+        </button>
+      </div>
+    `;
+
+    return article;
+  }
+
+  function prepareJuntaCard(card, junta) {
+    if (!card || !junta) return;
+
+    const oldMore = card.querySelector("[data-junta-history]");
+    if (oldMore) oldMore.remove();
+
+    const actions = card.querySelector(".card-actions");
+    if (!actions) return;
+
+    if (!actions.querySelector("[data-mj-history-button]")) {
+      const history = document.createElement("button");
+      history.className = "secondary mj-card-history-btn";
+      history.type = "button";
+      history.dataset.juntaHistory = junta.id;
+      history.dataset.mjHistoryButton = "true";
+      history.textContent = "📋 Historial";
+
+      const share = actions.querySelector("[data-share-junta]");
+      if (share) {
+        actions.insertBefore(history, share);
+      } else {
+        actions.appendChild(history);
+      }
+    }
+  }
+
+  function hideLegacyKellyQuickAction() {
+    const legacy = $(".kelly-action");
+    if (!legacy) return;
+    legacy.hidden = true;
+    legacy.setAttribute("aria-hidden", "true");
+  }
+
+  function ensureRefreshButton() {
+    if (sharedMode) return;
+
+    const bind = button => {
+      if (!button || button.dataset.mjRefreshBound === "1") return;
+      button.dataset.mjRefreshBound = "1";
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        button.classList.add("mj-refreshing");
+        const label = button.getAttribute("title") || "Actualizar datos";
+        toast(`${label}…`);
+        setTimeout(() => window.location.reload(), 180);
+      });
+    };
+
+    const existing = $("#mjRefreshBtn");
+    if (existing) {
+      bind(existing);
+      return;
+    }
+
+    const actions = $(".top-actions");
+    if (!actions) return;
+
+    const button = document.createElement("button");
+    button.className = "icon-btn mj-refresh-btn";
+    button.id = "mjRefreshBtn";
+    button.type = "button";
+    button.title = "Actualizar datos";
+    button.setAttribute("aria-label", "Actualizar datos");
+    button.textContent = "↻";
+    actions.insertBefore(button, actions.firstChild);
+    bind(button);
+  }
+
+  function playNewPaymentStars(type = "junta") {
+    const layer = $("#celebrationLayer");
+    if (!layer) return;
+
+    const symbols = type === "kelly"
+      ? ["✦", "💗", "✨", "♡", "✦"]
+      : ["✦", "✧", "🌸", "✨", "★"];
+
+    for (let i = 0; i < 14; i++) {
+      const star = document.createElement("span");
+      star.className = "mj-payment-star";
+      star.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+      star.style.setProperty("--mj-star-x", `${(Math.random() - .5) * 72}vw`);
+      star.style.setProperty("--mj-star-y", `${(Math.random() - .5) * 58}vh`);
+      star.style.setProperty("--mj-star-r", `${(Math.random() - .5) * 70}deg`);
+      star.style.setProperty("--mj-star-scale", `${.72 + Math.random() * .62}`);
+      star.style.setProperty("--mj-star-delay", `${Math.random() * .16}s`);
+      layer.appendChild(star);
+
+      setTimeout(() => star.remove(), 1500);
+    }
+  }
+
+  function enhanceMain() {
+    if (sharedMode || structuring) return;
+
+    const state = getState();
+    const grid = $("#juntasGrid");
+    if (!state || !grid) return;
+
+    hideLegacyKellyQuickAction();
+    ensureRefreshButton();
+
+    // Este observer vigila cambios hechos por la app principal.
+    // Como aquí reconstruimos #juntasGrid a propósito, lo
+    // desconectamos temporalmente para evitar un bucle infinito
+    // de renderizado que puede congelar la página.
+    const observerWasConnected = Boolean(gridObserver);
+    if (observerWasConnected) {
+      gridObserver.disconnect();
+    }
+
+    detectNewRecord(state);
+    archiveCompletedJuntas(state);
+
+    const juntaCards = Array.from(grid.children)
+      .filter(el => el.classList.contains("card"))
+      .filter(el => {
+        const juntaId = el.dataset.juntaCard || "";
+        const junta = (state.juntas || []).find(j => j.id === juntaId);
+        return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta);
+      });
+
+    structuring = true;
+    grid.classList.remove("cards-grid");
+    grid.classList.add("mj-finance-root");
+    grid.innerHTML = "";
+
+    const savings = document.createElement("section");
+    savings.className = "mj-finance-section mj-savings-section";
+    savings.appendChild(
+      makeSectionHeader(
+        "🌸",
+        "AHORROS",
+        "Tus juntitas",
+        "Metas que vas construyendo poquito a poquito."
+      )
+    );
+
+    const savingsCards = document.createElement("div");
+    savingsCards.className = "mj-finance-cards";
+
+    for (const card of juntaCards) {
+      const juntaId = card.dataset.juntaCard || "";
+      const junta = (state.juntas || []).find(j => j.id === juntaId);
+
+      prepareJuntaCard(card, junta);
+
+      if (
+        junta &&
+        lastSaved?.type === "junta" &&
+        lastSaved.parentId === junta.id &&
+        lastSaved.paymentId === junta.payments?.[junta.payments.length - 1]?.id
+      ) {
+        card.classList.add("mj-saved-card");
+      }
+
+      savingsCards.appendChild(card);
+    }
+
+    if (!juntaCards.length) {
+      const empty = document.createElement("div");
+      empty.className = "mj-finance-empty";
+      empty.innerHTML = `
+        <span>🌷</span>
+        <div>
+          <b>No hay juntas activas</b>
+          <small>Cuando crees una nueva meta aparecerá aquí.</small>
+        </div>
+      `;
+      savingsCards.appendChild(empty);
+    }
+
+    savings.appendChild(savingsCards);
+    appendPreviousJuntas(savings);
+
+    grid.appendChild(savings);
+
+    // Kelly desaparece de la interfaz cuando queda completamente pagada.
+    // Con deuda original S/0 todavía se muestra para permitir iniciar/revisar.
+    if (!isKellyCompleted(state)) {
+      const debts = document.createElement("section");
+      debts.className = "mj-finance-section mj-debts-section";
+      debts.appendChild(
+        makeSectionHeader(
+          "💗",
+          "DEUDAS",
+          "Lo pendiente",
+          "Aquí puedes revisar Kelly y sus pagos."
+        )
+      );
+
+      const debtCards = document.createElement("div");
+      debtCards.className = "mj-finance-cards";
+      debtCards.appendChild(makeKellyCard(state));
+      debts.appendChild(debtCards);
+
+      grid.appendChild(debts);
+    }
+
+    if (lastSaved) {
+      const starSignature = [
+        lastSaved.type,
+        lastSaved.parentId || "",
+        lastSaved.paymentId || ""
+      ].join(":");
+
+      if (starSignature !== lastStarSignature) {
+        lastStarSignature = starSignature;
+        const savedType = lastSaved.type;
+        requestAnimationFrame(() => playNewPaymentStars(savedType));
+      }
+    }
+
+    if (lastSaved) {
+      const savedSnapshot = lastSaved;
+      setTimeout(() => {
+        if (lastSaved === savedSnapshot) {
+          lastSaved = null;
+        }
+      }, 3200);
+    }
+
+    // Actualiza el contador de vencimiento mientras la tarjeta está visible.
+    document
+      .querySelectorAll("[data-mj-expiry]")
+      .forEach(el => {
+        const id = el.dataset.mjExpiry || "";
+        const item = getCompletedArchive().find(x => x.id === id);
+        if (!item) return;
+
+        const update = () => {
+          if (!document.body.contains(el)) return;
+          el.textContent = remainingArchiveText(item.expiresAt);
+        };
+
+        update();
+        const interval = setInterval(update, 1000);
+
+        const observer = new MutationObserver(() => {
+          if (!document.body.contains(el)) {
+            clearInterval(interval);
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+
+    structuring = false;
+
+    if (observerWasConnected) {
+      gridObserver.observe(grid, { childList: true, subtree: false });
+    }
+
+    scheduleArchiveCleanup();
+  }
+
+  function historyRows(type, parentId = "") {
+    if (sharedMode) {
+      if (sharedPayload?.type === "junta") {
+        return (sharedPayload.payments || []).slice().reverse();
+      }
+      if (sharedPayload?.type === "kelly") {
+        return (sharedPayload.payments || []).slice().reverse();
+      }
+      return [];
     }
 
     const state = getState();
+    if (!state) return [];
 
-    if (!state?.kelly) {
-      toast("No se encontró Kelly.");
-      return;
+    if (type === "junta") {
+      const junta = (state.juntas || []).find(j => j.id === parentId);
+      return junta ? (junta.payments || []).slice().reverse() : [];
     }
 
-    const history = getKellyHistory(state);
+    return (state.kelly?.payments || []).slice().reverse();
+  }
+
+  function openHistory(type, parentId = "") {
+    let title = "";
+    let intro = "";
+    let rows = [];
+
+    if (type === "junta") {
+      const junta = sharedMode
+        ? sharedPayload?.junta
+        : (getState()?.juntas || []).find(j => j.id === parentId);
+      if (!junta) return;
+      title = `🌸 Historial · ${esc(junta.name)}`;
+      intro = "Selecciona un movimiento para revisar todo el detalle.";
+      rows = historyRows("junta", parentId);
+    } else {
+      title = "💗 Pagos de Kelly";
+      intro = "Selecciona un pago para revisar todo el detalle.";
+      rows = historyRows("kelly");
+    }
 
     openModal(`
       <div class="mj-history-shell">
-        <button
-          class="secondary mj-back-btn"
-          type="button"
-          data-mj-close-history="true"
-        >
-          ← Volver
-        </button>
-
-        <div class="mj-detail-heading" style="margin-top:14px">
-          <span class="mj-detail-icon">💗</span>
-          <div>
-            <h2>Pagos de Kelly</h2>
-            <p>Historial de pagos registrados</p>
-          </div>
+        <div class="mj-history-topline">
+          <span class="mj-readonly-chip">${sharedMode ? "SOLO LECTURA" : "MOVIMIENTOS"}</span>
         </div>
 
-        <div class="history" style="margin-top:18px">
-          ${
-            history.length
-              ? history.map(payment =>
-                  createHistoryRow(
-                    "kelly",
-                    "",
-                    payment
-                  )
-                ).join("")
-              : `<div class="mj-empty-history">Todavía no hay pagos registrados.</div>`
-          }
+        <h2>${title}</h2>
+        <p class="intro">${intro}</p>
+
+        <div class="history mj-history-list">
+          ${rows.length ? rows.map((p, index) => {
+            const isNew = !sharedMode && lastSaved && lastSaved.paymentId === p.id && lastSaved.type === type && (type !== "junta" || lastSaved.parentId === parentId);
+            return `
+              <button
+                class="mj-history-row ${isNew ? "mj-record-new" : ""}"
+                type="button"
+                data-mj-detail-type="${type}"
+                data-mj-detail-parent="${esc(parentId)}"
+                data-mj-detail-id="${esc(p.id)}"
+                style="--mj-delay:${index * 55}ms"
+              >
+                <span class="mj-history-icon">${type === "junta" ? "🌸" : "💗"}</span>
+                <span class="mj-history-main">
+                  <b>${money(p.amount)}</b>
+                  <small>${esc(formatDate(p.date))}${p.method ? ` · ${esc(p.method)}` : ""}</small>
+                  ${p.note ? `<small class="mj-history-note">${esc(p.note)}</small>` : ""}
+                </span>
+                <span class="mj-history-arrow">›</span>
+              </button>
+            `;
+          }).join("") : `
+            <div class="empty">Todavía no hay movimientos registrados.</div>
+          `}
         </div>
       </div>
     `);
 
-    currentDetailContext = {
-      type: "kelly",
-      parentId: "",
-      paymentId: null
-    };
+    if (sharedMode) {
+      document.documentElement.classList.add("mj-shared-history");
+    }
   }
 
   function findPayment(type, parentId, paymentId) {
+    const wanted = String(paymentId ?? "");
+
     if (sharedMode) {
-      return (
-        (sharedPayload?.payments || []).find(
-          p => String(p?.id) === String(paymentId)
-        ) || null
-      );
+      return (sharedPayload?.payments || []).find(
+        p => String(p?.id ?? "") === wanted
+      ) || null;
     }
 
     const state = getState();
@@ -888,90 +969,49 @@
 
     if (type === "junta") {
       const junta = (state.juntas || []).find(
-        j => String(j.id) === String(parentId)
+        j => String(j?.id ?? "") === String(parentId ?? "")
       );
 
-      return (
-        junta?.payments?.find(
-          p => String(p?.id) === String(paymentId)
-        ) || null
-      );
+      return junta?.payments?.find(
+        p => String(p?.id ?? "") === wanted
+      ) || null;
     }
 
-    return (
-      state.kelly?.payments?.find(
-        p => String(p?.id) === String(paymentId)
-      ) || null
-    );
+    return state.kelly?.payments?.find(
+      p => String(p?.id ?? "") === wanted
+    ) || null;
   }
 
   function openDetail(type, parentId, paymentId) {
-    const payment = findPayment(
-      type,
-      parentId,
-      paymentId
-    );
-
+    const payment = findPayment(type, parentId, paymentId);
     if (!payment) {
       toast("No se encontró ese movimiento.");
       return;
     }
 
     const junta = type === "junta"
-      ? (
-          sharedMode
-            ? sharedPayload?.junta
-            : (getState()?.juntas || []).find(
-                j => String(j.id) === String(parentId)
-              )
-        )
+      ? (sharedMode ? sharedPayload?.junta : (getState()?.juntas || []).find(j => j.id === parentId))
       : null;
 
     const backText = type === "junta"
       ? "← Volver a movimientos"
       : "← Volver a pagos";
 
-    const receipt =
-      payment.receiptUrl ||
-      payment.receipt_url ||
-      payment.receiptData ||
-      "";
+    const receipt = payment.receiptUrl || payment.receiptData || "";
 
-    currentDetailContext = {
-      type,
-      parentId,
-      paymentId
-    };
+    currentDetailContext = { type, parentId, paymentId };
 
     openModal(`
       <div class="mj-detail-shell">
-        <button
-          class="secondary mj-back-btn"
-          type="button"
-          data-mj-back-history="true"
-        >
+        <button class="secondary mj-back-btn" type="button" data-mj-back-history="true">
           ${backText}
         </button>
 
         <div class="mj-detail-heading">
-          <span class="mj-detail-icon">
-            ${type === "junta" ? "🌸" : "💗"}
-          </span>
-
+          <span class="mj-detail-icon">${type === "junta" ? "🌸" : "💗"}</span>
           <div>
-            <h2>
-              ${type === "junta"
-                ? "Detalle del aporte"
-                : "Detalle del pago"}
-            </h2>
-
-            <p>
-              ${
-                type === "junta"
-                  ? esc(junta?.name || "Junta")
-                  : "Pago registrado para Kelly"
-              }
-            </p>
+            <h2>${type === "junta" ? "Detalle del aporte" : "Detalle del pago"}</h2>
+            <p>${type === "junta" ? esc(junta?.name || "Junta") : "Pago registrado para Kelly"}</p>
           </div>
         </div>
 
@@ -980,916 +1020,622 @@
             <span>Monto</span>
             <strong>${money(payment.amount)}</strong>
           </div>
-
           <div class="mj-detail-item">
             <span>Fecha</span>
-            <strong>${formatDate(payment.date)}</strong>
+            <strong>${esc(formatDate(payment.date))}</strong>
           </div>
-
           <div class="mj-detail-item">
             <span>Método</span>
-            <strong>${esc(payment.method || "Sin método")}</strong>
+            <strong>${esc(payment.method || "No indicado")}</strong>
           </div>
-
           <div class="mj-detail-item">
-            <span>Comprobante</span>
-            <strong>${receipt ? "Sí 📷" : "No"}</strong>
+            <span>Nota</span>
+            <strong>${esc(payment.note || "Sin nota")}</strong>
           </div>
-
-          ${
-            payment.note
-              ? `
-                <div class="mj-detail-item full">
-                  <span>Nota</span>
-                  <strong class="mj-detail-note">
-                    ${esc(payment.note)}
-                  </strong>
-                </div>
-              `
-              : ""
-          }
         </div>
 
-        ${
-          receipt
-            ? `
-              <div>
-                <img
-                  src="${esc(receipt)}"
-                  alt="Comprobante del movimiento"
-                  class="mj-receipt-preview"
-                  data-mj-large-receipt="${esc(receipt)}"
-                >
-              </div>
-            `
-            : ""
-        }
+        <div class="mj-receipt-title">Comprobante</div>
+        ${receipt ? `
+          <button class="mj-receipt-stage" type="button" data-mj-large-receipt="${esc(receipt)}">
+            <img src="${esc(receipt)}" alt="Comprobante del movimiento" class="mj-receipt-image">
+            <span>↗ Ver comprobante completo</span>
+          </button>
+        ` : `
+          <div class="empty">Este movimiento no tiene comprobante asociado.</div>
+        `}
 
-        <div class="mj-detail-actions">
-          ${
-            receipt
-              ? `
-                <button
-                  type="button"
-                  class="secondary"
-                  data-mj-large-receipt="${esc(receipt)}"
-                >
-                  📷 Ver comprobante
-                </button>
-              `
-              : `
-                <span></span>
-              `
-          }
-
-          ${
-            sharedMode
-              ? ""
-              : `
-                <button
-                  type="button"
-                  class="mj-delete-btn"
-                  data-mj-delete-payment="true"
-                >
-                  🗑 Eliminar
-                </button>
-              `
-          }
-        </div>
+        ${!sharedMode ? `
+          <div class="mj-delete-zone">
+            <button
+              type="button"
+              class="mj-delete-btn"
+              data-mj-delete-payment="true"
+            >
+              🗑️ Eliminar ${type === "junta" ? "aporte" : "pago"}
+            </button>
+          </div>
+        ` : ""}
       </div>
     `);
+
+    document.documentElement.classList.add("mj-detail-open");
   }
 
-  function openLargeReceipt(url) {
-    if (!url) {
-      toast("No hay comprobante disponible.");
-      return;
-    }
-
+  function openLargeReceipt(src) {
+    if (!src) return;
     openModal(`
-      <div class="mj-photo-shell">
-        <button
-          type="button"
-          class="secondary mj-back-btn"
-          data-mj-photo-back="true"
-        >
-          ← Volver
+      <div class="mj-photo-viewer">
+        <button class="secondary mj-back-btn" type="button" data-mj-photo-back="true">
+          ← Volver al detalle
         </button>
-
-        <img
-          src="${esc(url)}"
-          alt="Comprobante"
-          class="mj-large-receipt"
-        >
+        <h2>📷 Comprobante</h2>
+        <img src="${esc(src)}" alt="Comprobante" class="photo-modal-preview mj-soft-zoom">
       </div>
     `);
-  }
-
-  function renderKellyCard(state) {
-    if (!state?.kelly) return "";
-
-    const original = getKellyOriginal(state);
-    const paid = getKellyPaid(state);
-    const balance = getKellyBalance(state);
-    const payments = getKellyHistory(state);
-    const percent = original > 0
-      ? Math.min(100, Math.round((paid / original) * 100))
-      : 0;
-
-    if (balance <= 0 && original > 0) {
-      return "";
-    }
-
-    return `
-      <section class="card mj-kelly-card stagger" id="mjKellyCard">
-        <div class="card-head">
-          <div class="title-line">
-            <span class="symbol">💗</span>
-            <div>
-              <h2>Kelly</h2>
-              <div class="sub">Kelly te debe</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="money">
-          ${money(balance)}
-          <small>pendiente</small>
-        </div>
-
-        <div class="stats">
-          <span class="pill">
-            💗 Deuda original: ${money(original)}
-          </span>
-
-          <span class="pill">
-            ✓ Pagado: ${money(paid)}
-          </span>
-
-          <span class="pill">
-            ${payments.length} ${payments.length === 1 ? "pago" : "pagos"}
-          </span>
-        </div>
-
-        <div class="progress-row">
-          <div class="progress-meta">
-            <span>Progreso</span>
-            <strong>${percent}%</strong>
-          </div>
-
-          <div class="progress">
-            <span style="width:${percent}%"></span>
-          </div>
-        </div>
-
-        <div class="mj-card-actions">
-          <button
-            type="button"
-            class="primary"
-            data-mj-kelly-register="true"
-          >
-            💗 Registrar pago
-          </button>
-
-          <button
-            type="button"
-            class="secondary mj-history-btn"
-            data-mj-history-type="kelly"
-          >
-            📖 Historial
-          </button>
-
-          <button
-            type="button"
-            class="secondary mj-share-btn wide"
-            data-mj-share-type="kelly"
-          >
-            ↗ Compartir solo Kelly
-          </button>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderArchiveCard(item) {
-    const payments = Array.isArray(item.payments)
-      ? item.payments
-      : [];
-
-    return `
-      <article class="mj-archive-card">
-        <h3>🌸 ${esc(item.name || "Junta")}</h3>
-
-        <p>
-          Completada · ${money(item.goal || 0)}
-        </p>
-
-        <div class="stats" style="margin-bottom:0">
-          <span class="pill">
-            ✓ ${payments.length} ${payments.length === 1 ? "movimiento" : "movimientos"}
-          </span>
-
-          <span class="pill">
-            ${formatDate(new Date(item.completedAt).toISOString().slice(0,10))}
-          </span>
-        </div>
-      </article>
-    `;
-  }
-
-  function renderPreviousJuntas(state) {
-    const archive = getArchiveForDisplay();
-
-    if (!archive.length) return "";
-
-    return `
-      <section style="margin-top:24px">
-        <div class="mj-section-title">
-          <h2>Juntas anteriores</h2>
-          <span>Guardadas por ahora</span>
-        </div>
-
-        <div>
-          ${archive.map(renderArchiveCard).join("")}
-        </div>
-      </section>
-    `;
-  }
-
-  function renderMainStructure() {
-    if (sharedMode) return;
-
-    const state = getState();
-    if (!state) return;
-
-    archiveCompletedJuntas(state);
-    restoreVisibleJuntas(state);
-
-    const grid = $("#juntasGrid");
-    if (!grid) return;
-
-    const juntas = (state.juntas || []).filter(
-      junta => !isKnownTestJunta(junta) &&
-        !isJuntaSuppressed(junta.id)
-    );
-
-    if (!juntas.length) {
-      grid.innerHTML = `
-        <div class="empty" style="grid-column:1/-1">
-          Todavía no tienes una Junta activa.
-        </div>
-      `;
-    }
-
-    const kellyExisting = $("#mjKellyCard");
-
-    if (!kellyExisting && grid.parentElement) {
-      // Kelly se inserta inmediatamente después de juntas.
-      const existingKelly = document.querySelector(".mj-kelly-card");
-      if (existingKelly) existingKelly.remove();
-    }
-
-    const archiveTarget = document.querySelector(
-      "[data-mj-previous-juntas]"
-    );
-
-    if (archiveTarget) {
-      archiveTarget.innerHTML =
-        renderPreviousJuntas(state);
-    }
-  }
-
-  function renderPreviousSection() {
-    if (sharedMode) return;
-
-    const state = getState();
-    if (!state) return;
-
-    let container = document.querySelector(
-      "[data-mj-previous-juntas]"
-    );
-
-    if (!container) {
-      container = document.createElement("section");
-      container.setAttribute(
-        "data-mj-previous-juntas",
-        "true"
-      );
-      container.style.marginTop = "24px";
-
-      const lowerGrid =
-        document.querySelector(".lower-grid");
-
-      const shell =
-        document.querySelector(".shell");
-
-      if (lowerGrid && lowerGrid.parentNode) {
-        lowerGrid.parentNode.insertBefore(
-          container,
-          lowerGrid
-        );
-      } else if (shell) {
-        shell.appendChild(container);
-      }
-    }
-
-    container.innerHTML =
-      renderPreviousJuntas(state);
-  }
-
-  function renderKellySection() {
-    if (sharedMode) return;
-
-    const state = getState();
-    if (!state) return;
-
-    let container = document.querySelector(
-      "[data-mj-kelly-section]"
-    );
-
-    if (!container) {
-      container = document.createElement("div");
-      container.setAttribute(
-        "data-mj-kelly-section",
-        "true"
-      );
-
-      const lowerGrid =
-        document.querySelector(".lower-grid");
-
-      const shell =
-        document.querySelector(".shell");
-
-      if (lowerGrid && lowerGrid.parentNode) {
-        lowerGrid.parentNode.insertBefore(
-          container,
-          lowerGrid
-        );
-      } else if (shell) {
-        shell.appendChild(container);
-      }
-    }
-
-    const card = renderKellyCard(state);
-
-    container.innerHTML = card;
-  }
-
-  function addAnimations() {
-    if ($("#mj-extra-animations")) return;
-
-    const style = document.createElement("style");
-    style.id = "mj-extra-animations";
-    style.textContent = `
-      .mj-history-row{
-        transition:
-          transform .2s ease,
-          box-shadow .2s ease;
-      }
-
-      .mj-history-row:active{
-        transform:scale(.98);
-      }
-
-      .mj-delete-btn:active{
-        transform:scale(.97);
-      }
-
-      .mj-detail-shell{
-        animation:mjDetailIn .32s ease both;
-      }
-
-      @keyframes mjDetailIn{
-        from{
-          opacity:0;
-          transform:translateY(12px);
-        }
-        to{
-          opacity:1;
-          transform:none;
-        }
-      }
-    `;
-
-    document.head.appendChild(style);
-  }
-
-  function getCurrentVisibleJuntasSignature(state) {
-    return JSON.stringify(
-      (state?.juntas || [])
-        .filter(j => !isKnownTestJunta(j))
-        .map(j => ({
-          id:j.id,
-          name:j.name,
-          goal:j.goal,
-          paid:getJuntaPaid(j),
-          payments:(j.payments || []).map(p => ({
-            id:p.id,
-            amount:p.amount,
-            date:p.date
-          }))
-        }))
-    );
-  }
-
-  function starsAnimation(key = "") {
-    if (lastStarSignature === key) return;
-    lastStarSignature = key;
-
-    const layer = document.createElement("div");
-    layer.style.position = "fixed";
-    layer.style.inset = "0";
-    layer.style.pointerEvents = "none";
-    layer.style.zIndex = "100";
-    layer.setAttribute("aria-hidden", "true");
-
-    const stars = ["✦","✧","★","⋆","✿","❀"];
-
-    for (let i = 0; i < 14; i++) {
-      const star = document.createElement("span");
-      star.textContent = stars[i % stars.length];
-
-      const x = 15 + Math.random() * 70;
-      const y = 25 + Math.random() * 45;
-
-      star.style.position = "absolute";
-      star.style.left = `${x}%`;
-      star.style.top = `${y}%`;
-      star.style.fontSize = `${12 + Math.random() * 16}px`;
-      star.style.opacity = "0";
-      star.style.transform = "scale(.4)";
-      star.style.transition =
-        "opacity .35s ease, transform .7s ease";
-      star.style.color = "var(--pink)";
-
-      layer.appendChild(star);
-
-      setTimeout(() => {
-        star.style.opacity = ".9";
-        star.style.transform =
-          `scale(1) rotate(${Math.random() * 30 - 15}deg)`;
-      }, 40 + i * 25);
-
-      setTimeout(() => {
-        star.style.opacity = "0";
-        star.style.transform =
-          `translateY(-20px) scale(.55)`;
-      }, 550 + i * 24);
-    }
-
-    document.body.appendChild(layer);
-
-    setTimeout(() => layer.remove(), 1200);
-  }
-
-  function maybeCelebrateSaved() {
-    if (!lastSaved) return;
-
-    const signature =
-      `${lastSaved.type}:${lastSaved.parentId || ""}:${lastSaved.paymentId || ""}`;
-
-    starsAnimation(signature);
-
-    setTimeout(() => {
-      lastSaved = null;
-    }, 1100);
-  }
-
-  function getMainCardButtons(card) {
-    return {
-      history: card.querySelector("[data-mj-history-type]"),
-      share: card.querySelector("[data-mj-share-type]")
-    };
-  }
-
-  function enhanceJuntaCards() {
-    if (sharedMode) return;
-
-    const state = getState();
-    if (!state) return;
-
-    const cards = $$("#juntasGrid .card");
-
-    cards.forEach(card => {
-      if (card.dataset.mjEnhanced === "1") return;
-
-      const text =
-        card.textContent
-          .replace(/\s+/g, " ")
-          .trim()
-          .toLowerCase();
-
-      const junta = (state.juntas || []).find(
-        item =>
-          item?.name &&
-          text.includes(String(item.name).toLowerCase())
-      );
-
-      if (!junta) return;
-
-      card.dataset.mjEnhanced = "1";
-
-      const actionArea =
-        card.querySelector(".card-actions");
-
-      if (!actionArea) return;
-
-      const historyButton =
-        document.createElement("button");
-
-      historyButton.type = "button";
-      historyButton.className = "secondary";
-      historyButton.dataset.mjHistoryType = "junta";
-      historyButton.dataset.mjHistoryParent =
-        String(junta.id || "");
-      historyButton.textContent = "📖 Historial";
-
-      const shareButton =
-        document.createElement("button");
-
-      shareButton.type = "button";
-      shareButton.className = "secondary mj-share-btn";
-      shareButton.dataset.mjShareType = "junta";
-      shareButton.dataset.mjShareId =
-        String(junta.id || "");
-      shareButton.textContent = "↗ Compartir";
-
-      actionArea.appendChild(historyButton);
-      actionArea.appendChild(shareButton);
-    });
-  }
-
-  function enhanceMain() {
-    if (structuring) return;
-
-    const state = getState();
-    if (!state) return;
-
-    structuring = true;
-
-    try {
-      injectExtraStyles();
-      addAnimations();
-
-      archiveCompletedJuntas(state);
-      restoreVisibleJuntas(state);
-
-      enhanceJuntaCards();
-      renderKellySection();
-      renderPreviousSection();
-
-      const signature =
-        getCurrentVisibleJuntasSignature(state);
-
-      if (signature !== lastSignature) {
-        lastSignature = signature;
-      }
-
-      maybeCelebrateSaved();
-    } finally {
-      structuring = false;
-    }
-  }
-
-  function setSharedShell() {
-    document.documentElement.classList.add("mj-shared");
-    document.body.dataset.sharedMode = "true";
-
-    const topbar = $(".topbar");
-    if (topbar) {
-      topbar.style.display = "none";
-    }
-
-    const lowerGrid = $(".lower-grid");
-    if (lowerGrid) {
-      lowerGrid.style.display = "none";
-    }
-
-    const welcome = $(".welcome");
-    if (welcome) {
-      welcome.style.display = "none";
-    }
-
-    const settings = $("#settingsBtn");
-    if (settings) {
-      settings.style.display = "none";
-    }
-
-    const quickGrid = $(".quick-grid");
-    if (quickGrid) {
-      quickGrid.style.display = "none";
-    }
-  }
-
-  function renderSharedHistoryRows(type) {
-    if (!sharedPayload) return "";
-
-    const payments = Array.isArray(
-      sharedPayload.payments
-    )
-      ? sharedPayload.payments
-      : [];
-
-    return payments.length
-      ? payments.map(payment =>
-          createHistoryRow(
-            type,
-            sharedPayload.junta?.id || "",
-            payment
-          )
-        ).join("")
-      : `
-          <div class="mj-empty-history">
-            Todavía no hay movimientos.
-          </div>
-        `;
   }
 
   function renderSharedView() {
-    if (!sharedMode || !sharedPayload) return;
-    if (renderingShared) return;
+    if (!sharedMode || !sharedPayload || renderingShared) return;
+    const grid = $("#juntasGrid");
+    if (!grid) return;
 
     renderingShared = true;
 
-    try {
-      const main = document.querySelector("main.shell");
-      if (!main) return;
+    grid.classList.remove("cards-grid");
+    grid.classList.add("mj-shared-root");
 
-      const type = sharedPayload.type;
-      const data =
-        sharedPayload.junta ||
-        sharedPayload.kelly ||
-        null;
+    const title = sharedPayload.type === "junta"
+      ? sharedPayload.junta?.name || "Junta"
+      : "Kelly";
 
-      if (!data) {
-        main.innerHTML = `
-          <section class="card">
-            <h2>No hay datos para mostrar.</h2>
-            <p class="muted">El enlace compartido no contiene información.</p>
-          </section>
-        `;
-        return;
-      }
+    if (sharedPayload.type === "junta") {
+      const junta = sharedPayload.junta;
+      const payments = sharedPayload.payments || [];
+      const paid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const goal = Number(junta.goal || 0);
+      const pct = goal ? Math.min(100, paid / goal * 100) : 0;
 
-      const payments = Array.isArray(
-        sharedPayload.payments
-      )
-        ? sharedPayload.payments
-        : [];
-
-      const original =
-        type === "kelly"
-          ? Number(data.original || 2800)
-          : Number(data.goal || 0);
-
-      const paid =
-        type === "kelly"
-          ? payments.reduce(
-              (sum, p) =>
-                sum + Number(p.amount || 0),
-              0
-            )
-          : payments.reduce(
-              (sum, p) =>
-                sum + Number(p.amount || 0),
-              0
-            );
-
-      const balance =
-        type === "kelly"
-          ? Math.max(0, original - paid)
-          : Math.max(0, original - paid);
-
-      const percent =
-        original > 0
-          ? Math.min(
-              100,
-              Math.round((paid / original) * 100)
-            )
-          : 0;
-
-      main.innerHTML = `
-        <section class="card" style="max-width:720px;margin:auto">
-          <div class="card-head">
-            <div class="title-line">
-              <span class="symbol">
-                ${type === "kelly" ? "💗" : "🌸"}
-              </span>
-
-              <div>
-                <h2>${esc(
-                  data.name ||
-                  (type === "kelly"
-                    ? "Kelly"
-                    : "Junta")
-                )}</h2>
-
-                <div class="sub">
-                  Solo lectura
-                </div>
-              </div>
+      grid.innerHTML = `
+        <section class="mj-shared-section">
+          <div class="mj-shared-badge">🌸 SOLO LECTURA</div>
+          <div class="mj-shared-header">
+            <div>
+              <div class="mj-section-eyebrow">AHORROS</div>
+              <h2>${esc(title)}</h2>
+              <p>Esta vista contiene solamente esta Junta.</p>
             </div>
+            <div class="mj-shared-symbol">🌸</div>
           </div>
 
-          <div class="money">
-            ${money(balance)}
-            <small>
-              ${type === "kelly"
-                ? "pendiente"
-                : "por completar"}
-            </small>
-          </div>
-
-          <div class="stats">
-            <span class="pill">
-              Total: ${money(original)}
-            </span>
-
-            <span class="pill">
-              Pagado: ${money(paid)}
-            </span>
-
-            <span class="pill">
-              ${payments.length}
-              ${payments.length === 1
-                ? "movimiento"
-                : "movimientos"}
-            </span>
-          </div>
-
-          <div class="progress-row">
-            <div class="progress-meta">
+          <div class="mj-shared-summary">
+            <div>
+              <span>Acumulado</span>
+              <strong>${money(paid)}</strong>
+            </div>
+            <div>
+              <span>Meta</span>
+              <strong>${money(goal)}</strong>
+            </div>
+            <div>
               <span>Progreso</span>
-              <strong>${percent}%</strong>
-            </div>
-
-            <div class="progress">
-              <span style="width:${percent}%"></span>
+              <strong>${pct.toFixed(0)}%</strong>
             </div>
           </div>
 
-          <div class="mj-history-wrap">
-            <h3>Movimientos</h3>
+          <div class="progress mj-shared-progress">
+            <span style="width:${pct}%"></span>
+          </div>
 
-            <div style="margin-top:10px">
-              ${renderSharedHistoryRows(type)}
-            </div>
+          <div class="mj-shared-history-label">Historial</div>
+          <div class="mj-shared-list">
+            ${payments.slice().reverse().map((p, index) => `
+              <button
+                class="mj-history-row mj-shared-row"
+                type="button"
+                data-mj-detail-type="junta"
+                data-mj-detail-parent="${esc(junta.id)}"
+                data-mj-detail-id="${esc(p.id)}"
+                style="--mj-delay:${index * 55}ms"
+              >
+                <span class="mj-history-icon">🌸</span>
+                <span class="mj-history-main">
+                  <b>${money(p.amount)}</b>
+                  <small>${esc(formatDate(p.date))}${p.method ? ` · ${esc(p.method)}` : ""}</small>
+                  ${p.note ? `<small>${esc(p.note)}</small>` : ""}
+                </span>
+                <span class="mj-history-arrow">›</span>
+              </button>
+            `).join("") || `<div class="empty">Todavía no hay movimientos registrados.</div>`}
           </div>
         </section>
       `;
+    } else {
+      const original = Number(sharedPayload.original || 0);
+      const payments = sharedPayload.payments || [];
+      const paid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const balance = Math.max(0, original - paid);
+      const pct = original ? Math.min(100, paid / original * 100) : 0;
 
-      document.documentElement.classList.add(
-        "mj-shared-history"
-      );
-    } finally {
-      renderingShared = false;
+      grid.innerHTML = `
+        <section class="mj-shared-section mj-shared-kelly">
+          <div class="mj-shared-badge">💗 SOLO LECTURA</div>
+          <div class="mj-shared-header">
+            <div>
+              <div class="mj-section-eyebrow">DEUDAS</div>
+              <h2>Kelly</h2>
+              <p>Esta vista contiene solamente la información de Kelly.</p>
+            </div>
+            <div class="mj-shared-symbol">💗</div>
+          </div>
+
+          <div class="mj-shared-summary">
+            <div>
+              <span>Saldo pendiente</span>
+              <strong>${money(balance)}</strong>
+            </div>
+            <div>
+              <span>Deuda original</span>
+              <strong>${money(original)}</strong>
+            </div>
+            <div>
+              <span>Pagado</span>
+              <strong>${money(paid)}</strong>
+            </div>
+          </div>
+
+          <div class="progress mj-shared-progress">
+            <span style="width:${pct}%"></span>
+          </div>
+
+          <div class="mj-shared-history-label">Historial de pagos</div>
+          <div class="mj-shared-list">
+            ${payments.slice().reverse().map((p, index) => `
+              <button
+                class="mj-history-row mj-shared-row"
+                type="button"
+                data-mj-detail-type="kelly"
+                data-mj-detail-parent=""
+                data-mj-detail-id="${esc(p.id)}"
+                style="--mj-delay:${index * 55}ms"
+              >
+                <span class="mj-history-icon">💗</span>
+                <span class="mj-history-main">
+                  <b>${money(p.amount)}</b>
+                  <small>${esc(formatDate(p.date))}${p.method ? ` · ${esc(p.method)}` : ""}</small>
+                  ${p.note ? `<small>${esc(p.note)}</small>` : ""}
+                </span>
+                <span class="mj-history-arrow">›</span>
+              </button>
+            `).join("") || `<div class="empty">Todavía no hay pagos registrados.</div>`}
+          </div>
+        </section>
+      `;
     }
+
+    renderingShared = false;
+  }
+
+  function setSharedShell() {
+    document.documentElement.classList.add("mj-shared-mode");
+    document.documentElement.classList.remove("mj-shared-mode-pending");
+    sharedMode = true;
+
+    const brandText = $(".brand strong");
+    const brandSub = $("#savingPhrase") || $(".brand span");
+
+    if (brandText) brandText.textContent = "Mi Juntita";
+    if (brandSub) brandSub.textContent = "Vista compartida · solo lectura";
+
+    const welcome = $(".welcome");
+    if (welcome) welcome.hidden = true;
+
+    const actions = $(".quick-grid");
+    if (actions) actions.hidden = true;
+
+    const lower = $(".lower-grid");
+    if (lower) lower.hidden = true;
+
+    const settings = $("#settingsBtn");
+    if (settings) settings.hidden = true;
+
+    const topActions = $(".top-actions");
+    if (topActions) topActions.hidden = true;
   }
 
   async function initializeSharedMode(token) {
+    setSharedShell();
+
+    const grid = $("#juntasGrid");
+    if (grid) {
+      grid.classList.remove("cards-grid");
+      grid.classList.add("mj-shared-root");
+      grid.innerHTML = `
+        <section class="mj-shared-section mj-shared-loading">
+          <div class="mj-loading-flower">🌸</div>
+          <h2>Abriendo la vista compartida…</h2>
+          <p>Solo se mostrará la información que te compartieron.</p>
+        </section>
+      `;
+    }
+
     try {
-      const result = await apiShareRead(token);
-
-      sharedMode = true;
-      sharedPayload = result.data;
-
-      setSharedShell();
+      const data = await apiShareRead(token);
+      sharedPayload = {
+        type: data.type,
+        ...(data.data || {})
+      };
       renderSharedView();
-
     } catch (error) {
-      console.error(
-        "No se pudo abrir el enlace compartido:",
-        error
-      );
-
-      const main = document.querySelector("main.shell");
-
-      if (main) {
-        main.innerHTML = `
-          <section class="card">
-            <h2>No se pudo abrir el enlace</h2>
-            <p class="muted">
-              ${esc(
-                error instanceof Error
-                  ? error.message
-                  : "Error desconocido."
-              )}
-            </p>
+      document.documentElement.classList.remove("mj-shared-mode-pending");
+      if (grid) {
+        grid.innerHTML = `
+          <section class="mj-shared-section mj-shared-error">
+            <div class="mj-shared-symbol">🌷</div>
+            <h2>Enlace no disponible</h2>
+            <p>${esc(error.message || "No se pudo abrir esta vista compartida.")}</p>
           </section>
         `;
       }
     }
   }
 
-  async function shareRecord(type, id = "") {
+  async function openOwnerShare(type, id = "") {
+    const label = type === "junta" ? "Compartir Junta" : "Compartir Kelly";
+    const icon = type === "junta" ? "🌸" : "💗";
+
+    openModal(`
+      <div class="mj-share-builder">
+        <div class="mj-share-icon">${icon}</div>
+        <h2>${label}</h2>
+        <p class="intro">Creando un enlace que muestra solamente esta sección y su historial.</p>
+        <div class="mj-share-loading-box">
+          <div class="mj-loading-flower">✦</div>
+          <span>Preparando enlace seguro…</span>
+        </div>
+      </div>
+    `);
+
     try {
       const result = await apiShareCreate(type, id);
-
-      const copied = await copyText(result.url);
-
       openModal(`
-        <div class="mj-confirm-shell">
-          <div class="mj-confirm-icon">↗</div>
+        <div class="mj-share-builder">
+          <div class="mj-share-icon">${icon}</div>
+          <h2>${label}</h2>
+          <p class="intro">La persona que reciba este enlace verá únicamente esta sección, su historial y sus comprobantes. No verá tus otras juntas, gastos ni pendientes.</p>
 
-          <h2>Enlace listo</h2>
-
-          <p class="intro">
-            Este enlace es de solo lectura.
-            ${type === "junta"
-              ? "Solo mostrará esta Junta y sus movimientos."
-              : "Solo mostrará Kelly y sus pagos."}
-          </p>
-
-          <div
-            class="field"
-            style="margin-top:12px"
-          >
-            <input
-              value="${esc(result.url)}"
-              readonly
-              onclick="this.select()"
-            >
+          <div class="mj-readonly-box">
+            <span class="mj-readonly-chip">SOLO LECTURA</span>
+            <strong>No permite agregar, editar ni registrar pagos.</strong>
           </div>
 
-          <div class="form-actions">
-            <button
-              type="button"
-              class="primary"
-              data-mj-copy-share="${esc(result.url)}"
-            >
-              ${copied ? "✓ Copiado" : "Copiar enlace"}
-            </button>
-
-            <button
-              type="button"
-              class="secondary"
-              data-mj-close-share="true"
-            >
-              Cerrar
-            </button>
+          <div class="share-link-box mj-share-link-new">
+            <input id="mjShareLinkInput" readonly value="${esc(result.url)}" aria-label="Enlace compartido">
+            <button class="primary" type="button" id="mjCopyShareLink">Copiar enlace ↗</button>
           </div>
         </div>
       `);
 
+      $("#mjCopyShareLink")?.addEventListener("click", async () => {
+        const ok = await copyText(result.url);
+        toast(ok ? "Enlace copiado ↗" : "No se pudo copiar el enlace.");
+      });
     } catch (error) {
-      console.error(
-        "Error compartiendo:",
-        error
-      );
-
-      toast(
-        error instanceof Error
-          ? error.message
-          : "No se pudo crear el enlace."
-      );
+      openModal(`
+        <div class="mj-share-builder">
+          <div class="mj-share-icon">🌷</div>
+          <h2>No se pudo crear el enlace</h2>
+          <p class="intro">${esc(error.message || "Ocurrió un error al preparar el enlace.")}</p>
+          <button class="primary" type="button" data-mj-close-share="true">Cerrar</button>
+        </div>
+      `);
     }
   }
 
-  function openRegisterKelly() {
+  function openShareChooser() {
     const state = getState();
+    if (!state) return;
 
-    if (!state?.kelly) {
-      toast("No se encontró Kelly.");
+    const juntaOptions = (state.juntas || []).map((j, index) => `
+      <button class="mj-share-choice" type="button" data-mj-share-type="junta" data-mj-share-id="${esc(j.id)}">
+        <span>🌸</span>
+        <div>
+          <b>${esc(j.name || `Junta ${index + 1}`)}</b>
+          <small>Compartir solamente esta Junta</small>
+        </div>
+        <strong>›</strong>
+      </button>
+    `).join("");
+
+    openModal(`
+      <div class="mj-share-builder">
+        <div class="mj-share-icon">↗</div>
+        <h2>Compartir una sección</h2>
+        <p class="intro">Elige exactamente qué quieres mostrar. La otra persona no verá el resto de Mi Juntita.</p>
+
+        <div class="mj-share-group-title">AHORROS</div>
+        <div class="mj-share-choices">
+          ${juntaOptions || `<div class="empty">Todavía no tienes una Junta.</div>`}
+        </div>
+
+        <div class="mj-share-group-title">DEUDAS</div>
+        <div class="mj-share-choices">
+          <button class="mj-share-choice" type="button" data-mj-share-type="kelly" data-mj-share-id="">
+            <span>💗</span>
+            <div>
+              <b>Kelly</b>
+              <small>Compartir solamente Kelly</small>
+            </div>
+            <strong>›</strong>
+          </button>
+        </div>
+      </div>
+    `);
+  }
+
+  async function delegateClicks(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const historyButton = target.closest("[data-junta-history]");
+    if (historyButton && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openHistory("junta", historyButton.dataset.juntaHistory || "");
       return;
     }
 
-    const original =
-      getKellyOriginal(state);
-
-    const paid =
-      getKellyPaid(state);
-
-    const balance =
-      Math.max(0, original - paid);
-
-    if (balance <= 0) {
-      toast("Kelly ya está totalmente pagado.");
+    const kellyHistory = target.closest("[data-kelly-history-enhanced]");
+    if (kellyHistory && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openHistory("kelly");
       return;
     }
 
-    const form =
-      document.querySelector(
-        '[data-mj-kelly-form="true"]'
+    const kellyAdd = target.closest("[data-kelly-add-enhanced]");
+    if (kellyAdd && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      $("#kellyBtn")?.click();
+      return;
+    }
+
+    const kellyShare = target.closest("[data-kelly-share-enhanced]");
+    if (kellyShare && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openOwnerShare("kelly");
+      return;
+    }
+
+    const juntaShare = target.closest("[data-share-junta]");
+    if (juntaShare && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openOwnerShare("junta", juntaShare.dataset.shareJunta || "");
+      return;
+    }
+
+    const mainShare = target.closest("#shareBtn");
+    if (mainShare && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openShareChooser();
+      return;
+    }
+
+    const shareChoice = target.closest("[data-mj-share-type]");
+    if (shareChoice && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openOwnerShare(
+        shareChoice.dataset.mjShareType,
+        shareChoice.dataset.mjShareId || ""
+      );
+      return;
+    }
+
+    const archiveHistory = target.closest("[data-mj-archive-history]");
+    if (archiveHistory && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const archiveId = archiveHistory.dataset.mjArchiveId || "";
+      const state = getState();
+      const junta = (state?.juntas || []).find(j => j.id === archiveId);
+      if (junta) {
+        openHistory("junta", archiveId);
+      } else {
+        const item = getCompletedArchive().find(x => x.id === archiveId);
+        if (item) {
+          openModal(`
+            <div class="mj-history-shell">
+              <button class="secondary mj-back-btn" type="button" data-mj-close-archive="true">← Volver a anteriores</button>
+              <span class="mj-readonly-chip">HISTORIAL</span>
+              <h2>🌸 ${esc(item.name || "Junta")}</h2>
+              <p class="intro">Esta Junta fue completada y está conservada temporalmente.</p>
+              <div class="history mj-history-list">
+                ${(item.payments || []).slice().reverse().map((p, index) => `
+                  <button class="mj-history-row" type="button" data-mj-detail-type="junta" data-mj-detail-parent="${esc(item.id)}" data-mj-detail-id="${esc(p.id)}" style="--mj-delay:${index * 55}ms">
+                    <span class="mj-history-icon">🌸</span>
+                    <span class="mj-history-main">
+                      <b>${money(p.amount)}</b>
+                      <small>${esc(formatDate(p.date))}${p.method ? ` · ${esc(p.method)}` : ""}</small>
+                      ${p.note ? `<small>${esc(p.note)}</small>` : ""}
+                    </span>
+                    <span class="mj-history-arrow">›</span>
+                  </button>
+                `).join("") || `<div class="empty">No hay movimientos en esta Junta.</div>`}
+              </div>
+            </div>
+          `);
+        }
+      }
+      return;
+    }
+
+    const closeArchive = target.closest("[data-mj-close-archive]");
+    if (closeArchive) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeModal();
+      return;
+    }
+
+    const detail = target.closest("[data-mj-detail-type]");
+    if (detail) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openDetail(
+        detail.dataset.mjDetailType,
+        detail.dataset.mjDetailParent || "",
+        detail.dataset.mjDetailId || ""
+      );
+      return;
+    }
+
+    const backHistory = target.closest("[data-mj-back-history]");
+    if (backHistory) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (sharedMode) {
+        closeModal();
+      } else if (currentDetailContext) {
+        openHistory(currentDetailContext.type, currentDetailContext.parentId || "");
+      }
+      return;
+    }
+
+    const largeReceipt = target.closest("[data-mj-large-receipt]");
+    if (largeReceipt) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openLargeReceipt(largeReceipt.dataset.mjLargeReceipt || "");
+      return;
+    }
+
+    const photoBack = target.closest("[data-mj-photo-back]");
+    if (photoBack) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const currentDetail = document.querySelector(".mj-detail-shell");
+      if (currentDetail) {
+        const ctx = currentDetailContext;
+        if (ctx) {
+          openDetail(ctx.type, ctx.parentId || "", ctx.paymentId || "");
+        } else {
+          closeModal();
+        }
+      }
+      return;
+    }
+
+    const deleteButton = target.closest("[data-mj-delete-payment]");
+    if (deleteButton && !sharedMode) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const ctx = currentDetailContext;
+      if (!ctx?.paymentId) {
+        toast("No se pudo identificar este movimiento.");
+        return;
+      }
+
+      const payment = findPayment(
+        ctx.type,
+        ctx.parentId || "",
+        ctx.paymentId
       );
 
-    if (form) {
-      form.scrollIntoView({
-        behavior:"smooth",
-        block:"center"
-      });
+      if (!payment) {
+        toast("No se encontró este movimiento en la memoria actual.");
+        return;
+      }
+
+      const label = ctx.type === "junta" ? "aporte" : "pago";
+      const ok = window.confirm(
+        `¿Eliminar este ${label} de ${money(payment.amount)}?\n\nSe eliminará el registro y su comprobante. Esta acción no se puede deshacer.`
+      );
+
+      if (!ok) return;
+
+      deleteButton.disabled = true;
+      deleteButton.textContent = "🗑️ Eliminando…";
+
+      const endpoint = ctx.type === "junta"
+        ? "/api/delete-junta-payment"
+        : "/api/delete-kelly-payment";
+
+      const payload = {
+        paymentId: payment.id,
+        amount: Number(payment.amount || 0),
+        date: payment.date || "",
+        method: payment.method || "",
+        note: payment.note || "",
+        receiptUrl: payment.receiptUrl || payment.receipt_url || ""
+      };
+
+      if (ctx.type === "junta") {
+        payload.juntaId = ctx.parentId || "";
+      }
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.ok) {
+          throw new Error(
+            result?.error ||
+            "No se pudo eliminar el movimiento."
+          );
+        }
+
+        toast(
+          result.receiptDeleted === false
+            ? `${label} eliminado, pero el comprobante no pudo borrarse.`
+            : `${label.charAt(0).toUpperCase() + label.slice(1)} eliminado correctamente.`
+        );
+
+        currentDetailContext = null;
+        closeModal();
+
+        // Neon ya tiene el cambio. Recargamos para que app.js
+        // vuelva a sincronizar el estado completo y Kelly/Junta
+        // muestre el monto real actualizado.
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } catch (error) {
+        console.error("Error eliminando movimiento:", error);
+        deleteButton.disabled = false;
+        deleteButton.textContent = `🗑️ Eliminar ${ctx.type === "junta" ? "aporte" : "pago"}`;
+        toast(
+          error instanceof Error
+            ? error.message
+            : "No se pudo eliminar el movimiento."
+        );
+      }
+
       return;
     }
 
-    // Fallback: usamos el botón original de Kelly.
-    const originalButton =
-      $("#kellyBtn");
-
-    if (originalButton) {
-      originalButton.click();
-      return;
+    const closeShare = target.closest("[data-mj-close-share]");
+    if (closeShare) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeModal();
     }
+  }
 
-    toast("No se pudo abrir el registro de Kelly.");
+  function modalContextTypeFromDom() {
+    return $(".mj-detail-icon")?.textContent?.includes("💗") ? "kelly" : "junta";
   }
 
   function startObservers() {
@@ -1901,768 +1647,51 @@
         if (!renderingShared) renderSharedView();
         return;
       }
-
       enhanceMain();
     });
 
-    gridObserver.observe(
-      grid,
-      {
-        childList:true,
-        subtree:false
-      }
-    );
+    gridObserver.observe(grid, { childList: true, subtree: false });
 
     setTimeout(() => {
-      if (!sharedMode) {
-        enhanceMain();
-      }
+      if (!sharedMode) enhanceMain();
     }, 50);
   }
 
   function addSharedModeRoutingGuard() {
     if (!getShareToken()) return;
 
-    const bodyObserver =
-      new MutationObserver(() => {
-        if (!sharedMode) return;
-        setSharedShell();
-      });
-
-    bodyObserver.observe(
-      document.body,
-      {
-        childList:true,
-        subtree:true
-      }
-    );
-  }
-
-  function delegateClicks(event) {
-    const target =
-      event.target instanceof Element
-        ? event.target
-        : event.target?.parentElement;
-
-    if (!target) return;
-
-    // ============================================================
-    // HISTORIAL DE JUNTA / KELLY
-    // ============================================================
-
-    const historyButton =
-      target.closest("[data-mj-history-type]");
-
-    if (historyButton && !historyButton.closest(".mj-history-row")) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const type =
-        historyButton.dataset.mjHistoryType || "junta";
-
-      const parentId =
-        historyButton.dataset.mjHistoryParent || "";
-
-      openHistory(type, parentId);
-      return;
-    }
-
-    // ============================================================
-    // REGISTRAR KELLY
-    // ============================================================
-
-    const registerKelly =
-      target.closest("[data-mj-kelly-register]");
-
-    if (registerKelly && !sharedMode) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      openRegisterKelly();
-      return;
-    }
-
-    // ============================================================
-    // COMPARTIR
-    // ============================================================
-
-    const shareButton =
-      target.closest("[data-mj-share-type]");
-
-    if (shareButton && !sharedMode) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const type =
-        shareButton.dataset.mjShareType || "junta";
-
-      const id =
-        shareButton.dataset.mjShareId ||
-        shareButton.dataset.mjShareParent ||
-        "";
-
-      shareRecord(type, id);
-      return;
-    }
-
-    const copyShare =
-      target.closest("[data-mj-copy-share]");
-
-    if (copyShare) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      copyText(
-        copyShare.dataset.mjCopyShare || ""
-      ).then(() => {
-        copyShare.textContent = "✓ Copiado";
-      });
-
-      return;
-    }
-
-    const closeShare =
-      target.closest("[data-mj-close-share]");
-
-    if (closeShare) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      closeModal();
-      return;
-    }
-
-    // ============================================================
-    // ABRIR DETALLE
-    // ============================================================
-
-    const detail =
-      target.closest("[data-mj-detail-type]");
-
-    if (detail) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      openDetail(
-        detail.dataset.mjDetailType || "kelly",
-        detail.dataset.mjDetailParent || "",
-        detail.dataset.mjDetailId || ""
-      );
-
-      return;
-    }
-
-    // ============================================================
-    // VOLVER DEL DETALLE
-    // ============================================================
-
-    const backHistory =
-      target.closest("[data-mj-back-history]");
-
-    if (backHistory) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      if (sharedMode) {
-        closeModal();
-      } else if (currentDetailContext) {
-        openHistory(
-          currentDetailContext.type,
-          currentDetailContext.parentId || ""
-        );
-      }
-
-      return;
-    }
-
-    // ============================================================
-    // CERRAR HISTORIAL
-    // ============================================================
-
-    const closeHistory =
-      target.closest("[data-mj-close-history]");
-
-    if (closeHistory) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      closeModal();
-      return;
-    }
-
-    // ============================================================
-    // ELIMINAR MOVIMIENTO
-    // ============================================================
-
-    const deletePayment =
-      target.closest("[data-mj-delete-payment]");
-
-    if (deletePayment && !sharedMode) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const ctx = currentDetailContext;
-
-      if (
-        !ctx ||
-        !ctx.paymentId ||
-        !["kelly", "junta"].includes(ctx.type)
-      ) {
-        toast("No se pudo identificar el movimiento.");
-        return;
-      }
-
-      const payment = findPayment(
-        ctx.type,
-        ctx.parentId || "",
-        ctx.paymentId
-      );
-
-      if (!payment) {
-        toast("Ese movimiento ya no existe.");
-        return;
-      }
-
-      const label =
-        ctx.type === "junta"
-          ? "aporte de la Junta"
-          : "pago de Kelly";
-
-      openModal(`
-        <div class="mj-confirm-shell">
-          <div class="mj-confirm-icon">🗑️</div>
-
-          <h2>¿Eliminar este movimiento?</h2>
-
-          <p class="intro">
-            Vas a eliminar el ${label}
-            de <b>${money(payment.amount)}</b>.
-            Esta acción no se puede deshacer.
-          </p>
-
-          ${
-            payment.receiptUrl ||
-            payment.receipt_url ||
-            payment.receiptData
-              ? `
-                <div class="mj-confirm-note">
-                  También se eliminará el comprobante asociado.
-                </div>
-              `
-              : ""
-          }
-
-          <div class="form-actions mj-confirm-actions">
-            <button
-              class="secondary"
-              type="button"
-              data-mj-cancel-delete="true"
-            >
-              Cancelar
-            </button>
-
-            <button
-              class="mj-danger-btn mj-danger-confirm"
-              type="button"
-              data-mj-confirm-delete-payment="true"
-            >
-              Sí, eliminar
-            </button>
-          </div>
-        </div>
-      `);
-
-      return;
-    }
-
-    // ============================================================
-    // CANCELAR BORRADO
-    // ============================================================
-
-    const cancelDelete =
-      target.closest("[data-mj-cancel-delete]");
-
-    if (cancelDelete) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const ctx =
-        currentDetailContext;
-
-      if (ctx?.paymentId) {
-        openDetail(
-          ctx.type,
-          ctx.parentId || "",
-          ctx.paymentId
-        );
-      } else {
-        closeModal();
-      }
-
-      return;
-    }
-
-    // ============================================================
-    // CONFIRMAR BORRADO
-    // ============================================================
-
-    const confirmDeletePayment =
-      target.closest(
-        "[data-mj-confirm-delete-payment]"
-      );
-
-    if (
-      confirmDeletePayment &&
-      !sharedMode
-    ) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const ctx =
-        currentDetailContext;
-
-      if (
-        !ctx ||
-        !ctx.paymentId ||
-        !["kelly", "junta"].includes(ctx.type)
-      ) {
-        toast("No se pudo identificar el movimiento.");
-        return;
-      }
-
-      const state = getState();
-
-      const paymentId =
-        ctx.paymentId;
-
-      const endpoint =
-        ctx.type === "junta"
-          ? "/api/delete-junta-payment"
-          : "/api/delete-kelly-payment";
-
-      // ========================================================
-      // IMPORTANTE:
-      // Recuperamos el pago aquí mismo.
-      // No usamos ninguna variable "payment" de otro bloque.
-      // ========================================================
-
-      const payment = findPayment(
-        ctx.type,
-        ctx.parentId || "",
-        ctx.paymentId
-      );
-
-      if (!payment) {
-        toast(
-          "Ese movimiento ya no existe en la copia local."
-        );
-        return;
-      }
-
-      confirmDeletePayment.disabled = true;
-      confirmDeletePayment.textContent =
-        "Eliminando…";
-
-      try {
-        const payload = {
-          paymentId,
-
-          amount:
-            Number(payment.amount || 0),
-
-          date:
-            payment.date || "",
-
-          method:
-            payment.method || "",
-
-          note:
-            payment.note || "",
-
-          receiptUrl:
-            payment.receiptUrl ||
-            payment.receipt_url ||
-            ""
-        };
-
-        if (ctx.type === "junta") {
-          payload.juntaId =
-            ctx.parentId || "";
-        }
-
-        const response =
-          await fetch(
-            endpoint,
-            {
-              method:"POST",
-              headers:{
-                "Content-Type":
-                  "application/json",
-
-                Accept:
-                  "application/json"
-              },
-              body:
-                JSON.stringify(payload)
-            }
-          );
-
-        const data =
-          await response
-            .json()
-            .catch(() => null);
-
-        if (
-          !response.ok ||
-          !data?.ok
-        ) {
-          throw new Error(
-            data?.error ||
-            "No se pudo eliminar el movimiento."
-          );
-        }
-
-        // ========================================================
-        // ACTUALIZAR EL ESTADO EN MEMORIA
-        // ========================================================
-
-        if (
-          ctx.type === "kelly"
-        ) {
-          if (state?.kelly) {
-            if (
-              Array.isArray(
-                data?.kelly?.payments
-              )
-            ) {
-              state.kelly.payments =
-                data.kelly.payments.map(
-                  item => ({
-                    id:item.id,
-                    amount:
-                      Number(item.amount || 0),
-                    date:
-                      item.date || "",
-                    method:
-                      item.method || "",
-                    note:
-                      item.note || "",
-                    receiptUrl:
-                      item.receipt_url ||
-                      item.receiptUrl ||
-                      ""
-                  })
-                );
-            } else {
-              state.kelly.payments =
-                state.kelly.payments.filter(
-                  item =>
-                    String(item.id) !==
-                    String(paymentId)
-                );
-            }
-
-            if (
-              data?.kelly?.original !==
-              undefined
-            ) {
-              state.kelly.original =
-                Number(
-                  data.kelly.original
-                );
-            } else {
-              state.kelly.original =
-                Number(
-                  state.kelly.original ||
-                  2800
-                );
-            }
-          }
-        } else {
-          const junta =
-            (state?.juntas || []).find(
-              j =>
-                String(j.id) ===
-                String(ctx.parentId)
-            );
-
-          if (junta) {
-            junta.payments =
-              Array.isArray(
-                junta.payments
-              )
-                ? junta.payments.filter(
-                    item =>
-                      String(item.id) !==
-                      String(paymentId)
-                  )
-                : [];
-          }
-
-          const archive =
-            getCompletedArchive();
-
-          const archiveIndex =
-            archive.findIndex(
-              item =>
-                String(item.id) ===
-                String(ctx.parentId)
-            );
-
-          if (archiveIndex >= 0) {
-            archive[
-              archiveIndex
-            ].payments =
-              Array.isArray(
-                archive[
-                  archiveIndex
-                ].payments
-              )
-                ? archive[
-                    archiveIndex
-                  ].payments.filter(
-                    item =>
-                      String(item.id) !==
-                      String(paymentId)
-                  )
-                : [];
-
-            writeJsonStorage(
-              ARCHIVE_KEY,
-              archive
-            );
-          }
-        }
-
-        // ========================================================
-        // ACTUALIZAR LOCALSTORAGE
-        // ========================================================
-
-        try {
-          const raw =
-            localStorage.getItem(
-              "miJuntita.v2"
-            );
-
-          if (raw) {
-            const localState =
-              JSON.parse(raw);
-
-            if (
-              ctx.type === "kelly" &&
-              localState?.kelly
-            ) {
-              if (
-                Array.isArray(
-                  data?.kelly?.payments
-                )
-              ) {
-                localState.kelly.payments =
-                  data.kelly.payments;
-              } else {
-                localState.kelly.payments =
-                  Array.isArray(
-                    localState.kelly.payments
-                  )
-                    ? localState.kelly.payments.filter(
-                        item =>
-                          String(item.id) !==
-                          String(paymentId)
-                      )
-                    : [];
-              }
-
-              localState.kelly.original =
-                Number(
-                  data?.kelly?.original ??
-                  localState.kelly.original ??
-                  2800
-                );
-            }
-
-            if (
-              ctx.type === "junta" &&
-              Array.isArray(
-                localState?.juntas
-              )
-            ) {
-              const localJunta =
-                localState.juntas.find(
-                  j =>
-                    String(j.id) ===
-                    String(ctx.parentId)
-                );
-
-              if (localJunta) {
-                localJunta.payments =
-                  Array.isArray(
-                    localJunta.payments
-                  )
-                    ? localJunta.payments.filter(
-                        item =>
-                          String(item.id) !==
-                          String(paymentId)
-                      )
-                    : [];
-              }
-            }
-
-            localStorage.setItem(
-              "miJuntita.v2",
-              JSON.stringify(
-                localState
-              )
-            );
-          }
-        } catch (storageError) {
-          console.warn(
-            "No se pudo actualizar la copia local:",
-            storageError
-          );
-        }
-
-        // ========================================================
-        // LIMPIAR CONTEXTO Y ACTUALIZAR
-        // ========================================================
-
-        currentDetailContext = null;
-
-        closeModal();
-
-        toast(
-          ctx.type === "junta"
-            ? "Aporte eliminado correctamente."
-            : "Pago eliminado correctamente."
-        );
-
-        setTimeout(() => {
-          window.location.reload();
-        }, 450);
-
-      } catch (error) {
-        console.error(
-          "Error eliminando movimiento:",
-          error
-        );
-
-        confirmDeletePayment.disabled =
-          false;
-
-        confirmDeletePayment.textContent =
-          "Sí, eliminar";
-
-        toast(
-          error instanceof Error
-            ? error.message
-            : "No se pudo eliminar el movimiento."
-        );
-      }
-
-      return;
-    }
-
-    // ============================================================
-    // VER COMPROBANTE GRANDE
-    // ============================================================
-
-    const largeReceipt =
-      target.closest(
-        "[data-mj-large-receipt]"
-      );
-
-    if (largeReceipt) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      openLargeReceipt(
-        largeReceipt.dataset
-          .mjLargeReceipt || ""
-      );
-
-      return;
-    }
-
-    // ============================================================
-    // VOLVER DE FOTO
-    // ============================================================
-
-    const photoBack =
-      target.closest(
-        "[data-mj-photo-back]"
-      );
-
-    if (photoBack) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const currentDetail =
-        document.querySelector(
-          ".mj-detail-shell"
-        );
-
-      if (currentDetail) {
-        const ctx =
-          currentDetailContext;
-
-        if (ctx) {
-          openDetail(
-            ctx.type,
-            ctx.parentId || "",
-            ctx.paymentId || ""
-          );
-        } else {
-          closeModal();
-        }
-      }
-
-      return;
-    }
+    const bodyObserver = new MutationObserver(() => {
+      if (!sharedMode) return;
+      setSharedShell();
+    });
+
+    bodyObserver.observe(document.body, { childList: true, subtree: true });
   }
 
   function addEvents() {
-    document.addEventListener(
-      "click",
-      delegateClicks,
-      true
-    );
+    document.addEventListener("click", delegateClicks, true);
 
-    $("#modalClose")?.addEventListener(
-      "click",
-      () => {
-        document.documentElement.classList.remove(
-          "mj-shared-history",
-          "mj-detail-open"
-        );
-      },
-      true
-    );
+    $("#modalClose")?.addEventListener("click", () => {
+      document.documentElement.classList.remove("mj-shared-history", "mj-detail-open");
+    }, true);
   }
 
   async function init() {
+    injectDeleteStyles();
     addEvents();
 
-    const token =
-      getShareToken();
-
+    const token = getShareToken();
     if (token) {
       await initializeSharedMode(token);
       startObservers();
-      addSharedModeRoutingGuard();
       return;
     }
 
-    injectExtraStyles();
-    addAnimations();
     startObservers();
-    addSharedModeRoutingGuard();
   }
 
-  if (
-    document.readyState ===
-    "loading"
-  ) {
-    document.addEventListener(
-      "DOMContentLoaded",
-      init,
-      { once:true }
-    );
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
   } else {
     init();
   }
