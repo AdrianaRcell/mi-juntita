@@ -233,7 +233,7 @@
       juntas:[{
         id:"junta_default",
         name:"Junta",
-        goal:3000,
+        goal:4000,
         normal:250,
         modality:"quincenal",
         variable:true,
