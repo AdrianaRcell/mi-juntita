@@ -1153,3 +1153,13 @@ html.mj-shared-mode-pending .lower-grid,
 html.mj-shared-mode-pending .toast-wrap{
   visibility:hidden;
 }
+html,
+body{
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
+}
+
+body{
+  max-width:100%;
+  touch-action:pan-y;
+}
