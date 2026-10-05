@@ -24,26 +24,18 @@
   const ARCHIVE_KEY = "miJuntita.completedJuntas.v1";
   const HIDDEN_COMPLETED_KEY = "miJuntita.hiddenCompletedJuntas.v1";
 
-  const TEST_ARCHIVE_MS = 2 * 60 * 1000;
   const REAL_ARCHIVE_MS = 14 * 24 * 60 * 60 * 1000;
 
-  // 🧪 PRUEBA ACTUAL: 2 minutos.
-  // Cuando terminemos las pruebas, cambia esta línea por REAL_ARCHIVE_MS.
-  const ARCHIVE_DURATION_MS = TEST_ARCHIVE_MS;
+// Producción: una Junta completada permanece 14 días
+// en "Juntas anteriores".
+const ARCHIVE_DURATION_MS = REAL_ARCHIVE_MS;
 
+// Solo se utiliza para reconocer y borrar
+// registros antiguos creados durante las pruebas.
+const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
   // Limpieza temporal de pruebas conocidas.
   // Esto evita que una "Junta Test" vuelva a aparecer mientras terminamos las pruebas.
-  const TEST_JUNTA_NAMES = new Set([
-    "junta test",
-    "junta de prueba",
-    "junta prueba"
-  ]);
-
-  function isKnownTestJunta(junta) {
-    if (window.MiJuntitaTestMode) return false;
-    const name = String(junta?.name || "").trim().toLowerCase();
-    return TEST_JUNTA_NAMES.has(name);
-  }
+  
 
   // Cuando Kelly alcanza el 100 %, se retira de la interfaz.
   // Conservamos sus pagos en Neon para no perder el historial.
@@ -236,6 +228,30 @@
   }
 
   function getCompletedArchive() {
+    function purgeLegacyTestArchives() {
+  const archive = getCompletedArchive();
+
+  if (!archive.length) return;
+
+  const cleaned = archive.filter(item => {
+    const completedAt = Number(item?.completedAt || 0);
+    const expiresAt = Number(item?.expiresAt || 0);
+
+    if (!completedAt || !expiresAt) {
+      return true;
+    }
+
+    const duration = expiresAt - completedAt;
+
+    // Las antiguas pruebas tenían exactamente 2 minutos.
+    // Las eliminamos una sola vez.
+    return duration > LEGACY_TEST_ARCHIVE_MS + 5000;
+  });
+
+  if (cleaned.length !== archive.length) {
+    writeJsonStorage(ARCHIVE_KEY, cleaned);
+  }
+}
     const value = readJsonStorage(ARCHIVE_KEY, []);
     return Array.isArray(value) ? value : [];
   }
@@ -297,28 +313,28 @@
   }
 
   function archiveCompletedJuntas(state) {
-    if (!state) return;
+  if (!state) return;
 
-    cleanCompletedArchive();
+  // Limpia las Juntas anteriores creadas con el antiguo
+  // temporizador de 2 minutos.
+  purgeLegacyTestArchives();
 
-    const archive = getCompletedArchive();
-    const hidden = new Set(getHiddenCompletedIds());
-    const byId = new Map(
-      archive.map(item => [item.id, item])
-    );
+  cleanCompletedArchive();
 
-    let changed = false;
+  const archive = getCompletedArchive();
+  const hidden = new Set(getHiddenCompletedIds());
+  const byId = new Map(
+    archive.map(item => [item.id, item])
+  );
+
+  let changed = false;
 
     for (const junta of state.juntas || []) {
       if (!junta?.id || hidden.has(junta.id)) {
         continue;
       }
 
-      if (isKnownTestJunta(junta)) {
-        hidden.add(junta.id);
-        changed = true;
-        continue;
-      }
+     
 
       const paid = getJuntaPaid(junta);
       const goal = Number(junta.goal || 0);
