@@ -17,64 +17,179 @@ export async function POST(request) {
 
     if (origin && origin !== url.origin) {
       return json(
-        { ok: false, error: "Origen no permitido." },
+        {
+          ok: false,
+          error: "Origen no permitido.",
+        },
         403
       );
     }
 
     const body = await request.json().catch(() => null);
-    const paymentId = body?.paymentId;
 
-    if (
-      paymentId === undefined ||
-      paymentId === null ||
-      String(paymentId).trim() === ""
-    ) {
-      return json(
-        { ok: false, error: "Falta el ID del pago." },
-        400
-      );
+    const paymentId = body?.paymentId ?? "";
+    const juntaId = body?.juntaId ?? "";
+    const receiptUrl = String(
+      body?.receiptUrl || ""
+    ).trim();
+
+    let payment = null;
+
+    // ------------------------------------------------------------
+    // 1. Intentar encontrar por ID
+    // ------------------------------------------------------------
+
+    if (String(paymentId).trim() !== "") {
+      const byId = await sql`
+        SELECT
+          id,
+          junta_id,
+          amount,
+          receipt_url
+        FROM junta_payments
+        WHERE CAST(id AS TEXT) = ${String(paymentId)}
+        LIMIT 1
+      `;
+
+      if (byId.length) {
+        payment = byId[0];
+      }
     }
 
-    const rows = await sql`
-      SELECT id, receipt_url
-      FROM kelly_payments
-      WHERE id = ${paymentId}
-      LIMIT 1
-    `;
+    // ------------------------------------------------------------
+    // 2. Si el ID de la interfaz no coincide con Neon,
+    //    intentar encontrar por el comprobante.
+    // ------------------------------------------------------------
 
-    if (!rows.length) {
+    if (!payment && receiptUrl) {
+      const byReceipt = await sql`
+        SELECT
+          id,
+          junta_id,
+          amount,
+          receipt_url
+        FROM junta_payments
+        WHERE receipt_url = ${receiptUrl}
+        LIMIT 1
+      `;
+
+      if (byReceipt.length) {
+        payment = byReceipt[0];
+      }
+    }
+
+    // ------------------------------------------------------------
+    // 3. Si no encontramos nada
+    // ------------------------------------------------------------
+
+    if (!payment) {
       return json(
-        { ok: false, error: "No se encontró el pago." },
+        {
+          ok: false,
+          error:
+            "No se encontró el aporte en Neon. Se intentó localizarlo por ID y por comprobante.",
+        },
         404
       );
     }
 
-    const receiptUrl = rows[0].receipt_url || "";
+    // ------------------------------------------------------------
+    // 4. Seguridad:
+    //    si ambos IDs están disponibles y coinciden,
+    //    comprobamos que pertenece a esa Junta.
+    //
+    //    Si encontramos el pago únicamente por receipt_url,
+    //    no bloqueamos el borrado por una diferencia de IDs
+    //    entre la interfaz y Neon.
+    // ------------------------------------------------------------
 
-    await sql`
-      DELETE FROM kelly_payments
-      WHERE id = ${paymentId}
+    const foundById =
+      String(paymentId).trim() !== "" &&
+      String(payment.id) === String(paymentId);
+
+    if (
+      foundById &&
+      juntaId &&
+      String(payment.junta_id) !== String(juntaId)
+    ) {
+      return json(
+        {
+          ok: false,
+          error:
+            "El aporte no pertenece a esa Junta.",
+        },
+        403
+      );
+    }
+
+    const receiptToDelete =
+      payment.receipt_url || receiptUrl || "";
+
+    const realPaymentId = payment.id;
+
+    // ------------------------------------------------------------
+    // 5. Eliminar el registro real de Neon
+    // ------------------------------------------------------------
+
+    const deleted = await sql`
+      DELETE FROM junta_payments
+      WHERE id = ${realPaymentId}
+      RETURNING
+        id,
+        junta_id,
+        amount,
+        receipt_url
     `;
 
-    if (receiptUrl) {
+    if (!deleted.length) {
+      return json(
+        {
+          ok: false,
+          error:
+            "No se pudo eliminar el aporte de Neon.",
+        },
+        500
+      );
+    }
+
+    const deletedPayment = deleted[0];
+
+    // ------------------------------------------------------------
+    // 6. Eliminar comprobante de Vercel Blob
+    // ------------------------------------------------------------
+
+    let receiptDeleted = true;
+
+    if (receiptToDelete) {
       try {
-        await del(receiptUrl);
+        await del(receiptToDelete);
       } catch (blobError) {
+        receiptDeleted = false;
+
         console.warn(
-          "No se pudo eliminar el comprobante de Blob:",
+          "El aporte fue eliminado de Neon, pero el comprobante no pudo eliminarse de Blob:",
           blobError
         );
       }
     }
 
+    // ------------------------------------------------------------
+    // 7. Respuesta
+    // ------------------------------------------------------------
+
     return json({
       ok: true,
-      deletedPaymentId: paymentId,
+      deletedPaymentId: deletedPayment.id,
+      deletedAmount: Number(
+        deletedPayment.amount || 0
+      ),
+      juntaId: deletedPayment.junta_id,
+      receiptDeleted,
     });
+
   } catch (error) {
     console.error(
-      "Error eliminando pago de Kelly:",
+      "Error eliminando aporte de Junta:",
       error
     );
 
@@ -84,7 +199,7 @@ export async function POST(request) {
         error:
           error instanceof Error
             ? error.message
-            : "No se pudo eliminar el pago.",
+            : "No se pudo eliminar el aporte.",
       },
       500
     );
