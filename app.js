@@ -41,14 +41,10 @@
     `${p}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 
   const formatDate = value => {
-
-    const text =
-      String(value || "").trim();
+    const text = String(value || "").trim();
 
     const match =
-      text.match(
-        /^(\d{4})-(\d{2})-(\d{2})$/
-      );
+      text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
     if(!match){
       return text || "Sin fecha";
@@ -59,7 +55,15 @@
 
 
   // ============================================================
-  // CARGA INICIAL — NO BLOQUEAR LA APP
+  // ESTADO DE SINCRONIZACIÓN
+  // ============================================================
+
+  let cloudReady = false;
+  let cloudSyncFailed = false;
+
+
+  // ============================================================
+  // CARGA INICIAL
   // ============================================================
 
   function createLoadingScreen(){
@@ -75,7 +79,6 @@
       "miJuntitaLoader";
 
     loader.innerHTML = `
-
       <div class="mj-loader-content">
 
         <div class="mj-loader-flower">
@@ -87,7 +90,7 @@
         </div>
 
         <div class="mj-loader-text">
-          preparando tus datos…
+          cargando tus datos…
         </div>
 
       </div>
@@ -108,18 +111,18 @@
         display:flex;
         align-items:center;
         justify-content:center;
-        background:rgba(255,250,252,.97);
+        background:rgba(255,250,252,.98);
         opacity:1;
         transition:opacity .28s ease;
-        pointer-events:none;
       }
 
       html.dark #miJuntitaLoader{
-        background:rgba(25,20,25,.97);
+        background:rgba(25,20,25,.98);
       }
 
       #miJuntitaLoader.mj-loader-hide{
         opacity:0;
+        pointer-events:none;
       }
 
       .mj-loader-content{
@@ -154,6 +157,7 @@
         0%,100%{
           transform:translateY(0) rotate(-3deg) scale(1);
         }
+
         50%{
           transform:translateY(-5px) rotate(3deg) scale(1.05);
         }
@@ -167,7 +171,23 @@
     `;
 
     document.head.appendChild(style);
+
+    // Se agrega ANTES de renderizar visualmente
+    // el estado viejo.
     document.body.appendChild(loader);
+  }
+
+
+  function updateLoadingText(text){
+
+    const el =
+      document.querySelector(
+        "#miJuntitaLoader .mj-loader-text"
+      );
+
+    if(el){
+      el.textContent = text;
+    }
   }
 
 
@@ -192,29 +212,6 @@
       style?.remove();
 
     },350);
-  }
-
-
-  function prepareLoadingScreen(){
-
-    createLoadingScreen();
-
-    const loader =
-      $("#miJuntitaLoader");
-
-    if(!loader) return;
-
-    setTimeout(() => {
-
-      if(
-        !document.body.contains(loader)
-      ){
-        return;
-      }
-
-      hideLoadingScreen();
-
-    },1500);
   }
 
 
@@ -286,20 +283,30 @@
     try{
 
       const response =
-        await fetch("/api/juntas");
+        await fetch(
+          "/api/juntas",
+          {
+            cache:"no-store",
+            headers:{
+              Accept:"application/json"
+            }
+          }
+        );
 
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudieron cargar las juntas"
         );
       }
 
-      return data.juntas || [];
+      return Array.isArray(data.juntas)
+        ? data.juntas
+        : [];
 
     }catch(error){
 
@@ -325,18 +332,31 @@
 
             headers:{
               "Content-Type":
+                "application/json",
+              Accept:
                 "application/json"
             },
 
             body:
               JSON.stringify({
 
-                id:junta.id,
-                name:junta.name,
-                goal:junta.goal,
-                normal:junta.normal,
-                modality:junta.modality,
-                variable:junta.variable
+                id:
+                  String(junta.id),
+
+                name:
+                  junta.name,
+
+                goal:
+                  junta.goal,
+
+                normal:
+                  junta.normal,
+
+                modality:
+                  junta.modality,
+
+                variable:
+                  junta.variable
               })
           }
         );
@@ -344,15 +364,15 @@
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudo guardar la junta"
         );
       }
 
-      return data.junta;
+      return data.junta || null;
 
     }catch(error){
 
@@ -380,21 +400,29 @@
 
       const response =
         await fetch(
-          `/api/junta-payments?junta_id=${encodeURIComponent(juntaId)}`
+          `/api/junta-payments?junta_id=${encodeURIComponent(juntaId)}`,
+          {
+            cache:"no-store",
+            headers:{
+              Accept:"application/json"
+            }
+          }
         );
 
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudieron cargar los aportes"
         );
       }
 
-      return data.payments || [];
+      return Array.isArray(data.payments)
+        ? data.payments
+        : [];
 
     }catch(error){
 
@@ -420,6 +448,8 @@
 
             headers:{
               "Content-Type":
+                "application/json",
+              Accept:
                 "application/json"
             },
 
@@ -427,10 +457,10 @@
               JSON.stringify({
 
                 id:
-                  payment.id,
+                  String(payment.id),
 
                 junta_id:
-                  payment.juntaId,
+                  String(payment.juntaId),
 
                 amount:
                   payment.amount,
@@ -453,15 +483,15 @@
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudo guardar el aporte"
         );
       }
 
-      return data.payment;
+      return data.payment || null;
 
     }catch(error){
 
@@ -488,15 +518,23 @@
     try{
 
       const response =
-        await fetch("/api/kelly");
+        await fetch(
+          "/api/kelly",
+          {
+            cache:"no-store",
+            headers:{
+              Accept:"application/json"
+            }
+          }
+        );
 
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudo cargar Kelly"
         );
       }
@@ -527,6 +565,8 @@
 
             headers:{
               "Content-Type":
+                "application/json",
+              Accept:
                 "application/json"
             },
 
@@ -541,15 +581,15 @@
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudo guardar Kelly"
         );
       }
 
-      return data.kelly;
+      return data.kelly || null;
 
     }catch(error){
 
@@ -573,21 +613,29 @@
 
       const response =
         await fetch(
-          "/api/kelly-payments"
+          "/api/kelly-payments",
+          {
+            cache:"no-store",
+            headers:{
+              Accept:"application/json"
+            }
+          }
         );
 
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudieron cargar los pagos de Kelly"
         );
       }
 
-      return data.payments || [];
+      return Array.isArray(data.payments)
+        ? data.payments
+        : [];
 
     }catch(error){
 
@@ -613,6 +661,8 @@
 
             headers:{
               "Content-Type":
+                "application/json",
+              Accept:
                 "application/json"
             },
 
@@ -620,7 +670,7 @@
               JSON.stringify({
 
                 id:
-                  payment.id,
+                  String(payment.id),
 
                 amount:
                   payment.amount,
@@ -643,15 +693,15 @@
       const data =
         await response.json();
 
-      if(!data.ok){
+      if(!response.ok || !data.ok){
 
         throw new Error(
-          data.error ||
+          data?.error ||
           "No se pudo guardar el pago de Kelly"
         );
       }
 
-      return data.payment;
+      return data.payment || null;
 
     }catch(error){
 
@@ -715,7 +765,8 @@
         "/api/upload-receipt",
         {
           method:"POST",
-          body:formData
+          body:formData,
+          cache:"no-store"
         }
       );
 
@@ -750,131 +801,38 @@
 
 
   // ============================================================
-  // ASEGURAR JUNTA PRINCIPAL EN NEON
-  // ============================================================
-
-  async function ensureDefaultJuntaCloud(){
-
-    const junta =
-      state.juntas.find(
-        j =>
-          j.id === "junta_default"
-      );
-
-    if(!junta){
-      return true;
-    }
-
-    if(
-      state.migrations?.defaultJuntaCloud
-    ){
-
-      return true;
-    }
-
-    const saved =
-      await apiCreateJunta(
-        junta
-      );
-
-    if(!saved){
-      return false;
-    }
-
-    state.migrations = {
-
-      ...(state.migrations || {}),
-
-      defaultJuntaCloud:true
-    };
-
-    save();
-
-    return true;
-  }
-
-
-  // ============================================================
-  // ASEGURAR KELLY EN NEON
-  // ============================================================
-
-  async function ensureKellyCloud(){
-
-    const cloudKelly =
-      await apiGetKelly();
-
-    if(cloudKelly){
-      return true;
-    }
-
-    const saved =
-      await apiSaveKelly(
-        state.kelly
-      );
-
-    if(!saved){
-      return false;
-    }
-
-    return true;
-  }
-
-
-  // ============================================================
-  // SINCRONIZAR JUNTAS Y APORTES
+  // SINCRONIZAR JUNTAS
+  //
+  // IMPORTANTE:
+  // NEON ES LA FUENTE OFICIAL.
+  //
+  // Ya NO:
+  // - crea automáticamente Juntas que no existen en Neon;
+  // - vuelve a subir pagos locales eliminados;
+  // - mezcla datos viejos con los nuevos.
   // ============================================================
 
   async function syncCloudData(){
 
     try{
 
-      let cloudJuntas =
+      const cloudJuntas =
         await apiGetJuntas();
 
       if(cloudJuntas === null){
         return false;
       }
 
-      for(
-        const localJunta
-        of state.juntas
-      ){
-
-        const exists =
-          cloudJuntas.some(
-            cloudJunta =>
-              cloudJunta.id ===
-              localJunta.id
-          );
-
-        if(!exists){
-
-          await apiCreateJunta(
-            localJunta
-          );
-        }
-      }
-
-      cloudJuntas =
-        await apiGetJuntas();
-
-      if(cloudJuntas === null){
-        return false;
-      }
-
-      const mergedJuntas = [];
+      const freshJuntas = [];
 
       for(
         const cloudJunta
         of cloudJuntas
       ){
 
-        const localJunta =
-          state.juntas.find(
-            j =>
-              j.id ===
-              cloudJunta.id
-          );
+        if(!cloudJunta?.id){
+          continue;
+        }
 
         const cloudPayments =
           await apiGetJuntaPayments(
@@ -883,147 +841,50 @@
 
         if(cloudPayments === null){
 
-          if(localJunta){
-
-            mergedJuntas.push(
-              localJunta
-            );
-          }
-
-          continue;
-        }
-
-        const paymentsById =
-          new Map();
-
-        cloudPayments.forEach(
-          payment => {
-
-            const localPayment =
-              localJunta?.payments?.find(
-                p =>
-                  p.id ===
-                  payment.id
-              );
-
-            paymentsById.set(
-              payment.id,
-              {
-
-                id:
-                  payment.id,
-
-                amount:
-                  Number(
-                    payment.amount || 0
-                  ),
-
-                date:
-                  String(
-                    payment.payment_date ||
-                    ""
-                  ).slice(0,10),
-
-                method:
-                  payment.method || "",
-
-                note:
-                  payment.note || "",
-
-                receiptUrl:
-                  payment.receipt_url ||
-                  localPayment?.receiptUrl ||
-                  "",
-
-                receiptData:
-                  localPayment?.receiptData ||
-                  ""
-              }
-            );
-          }
-        );
-
-        if(localJunta){
-
-          for(
-            const localPayment
-            of (
-              localJunta.payments ||
-              []
-            )
-          ){
-
-            if(
-              paymentsById.has(
-                localPayment.id
-              )
-            ){
-
-              continue;
-            }
-
-            const uploaded =
-              await apiCreateJuntaPayment(
-                localPayment
-              );
-
-            if(uploaded){
-
-              paymentsById.set(
-                uploaded.id,
-                {
-
-                  id:
-                    uploaded.id,
-
-                  amount:
-                    Number(
-                      uploaded.amount || 0
-                    ),
-
-                  date:
-                    String(
-                      uploaded.payment_date ||
-                      localPayment.date ||
-                      ""
-                    ).slice(0,10),
-
-                  method:
-                    uploaded.method ||
-                    localPayment.method ||
-                    "",
-
-                  note:
-                    uploaded.note ||
-                    localPayment.note ||
-                    "",
-
-                  receiptUrl:
-                    uploaded.receipt_url ||
-                    localPayment.receiptUrl ||
-                    "",
-
-                  receiptData:
-                    localPayment.receiptData ||
-                    ""
-                }
-              );
-            }
-          }
+          // Si una Junta no pudo cargar sus pagos,
+          // abortamos toda la sincronización.
+          // Así nunca mostramos un estado parcial.
+          return false;
         }
 
         const payments =
-          Array.from(
-            paymentsById.values()
+          cloudPayments.map(
+            payment => ({
+
+              id:
+                String(payment.id),
+
+              amount:
+                Number(
+                  payment.amount || 0
+                ),
+
+              date:
+                String(
+                  payment.payment_date ||
+                  ""
+                ).slice(0,10),
+
+              method:
+                payment.method || "",
+
+              note:
+                payment.note || "",
+
+              receiptUrl:
+                payment.receipt_url || "",
+
+              receiptData:""
+            })
           );
 
-        mergedJuntas.push({
+        freshJuntas.push({
 
           id:
-            cloudJunta.id,
+            String(cloudJunta.id),
 
           name:
-            cloudJunta.name,
+            cloudJunta.name || "Junta",
 
           goal:
             Number(
@@ -1045,20 +906,22 @@
             ),
 
           payments
-
         });
       }
 
-      if(mergedJuntas.length){
+      // ESTA ES LA PARTE IMPORTANTE:
+      // reemplazamos TODO el listado local por el
+      // listado que realmente existe en Neon.
+      //
+      // Si una Junta fue eliminada de Neon,
+      // desaparece aquí definitivamente.
+      state.juntas =
+        freshJuntas;
 
-        state.juntas =
-          mergedJuntas;
-
-        save();
-      }
+      save();
 
       console.log(
-        "Mi Juntita: juntas sincronizadas con Neon."
+        "Mi Juntita: Juntas sincronizadas con Neon."
       );
 
       return true;
@@ -1066,7 +929,7 @@
     }catch(error){
 
       console.error(
-        "Error sincronizando juntas con Neon:",
+        "Error sincronizando Juntas con Neon:",
         error
       );
 
@@ -1077,6 +940,9 @@
 
   // ============================================================
   // SINCRONIZAR KELLY
+  //
+  // NEON ES LA FUENTE OFICIAL.
+  // Ya NO se vuelven a subir pagos que solo existen localmente.
   // ============================================================
 
   async function syncKellyCloud(){
@@ -1090,47 +956,26 @@
         return false;
       }
 
-      state.kelly.original =
-        Number(
-          cloudKelly.original || 0
-        );
-
       const cloudPayments =
         await apiGetKellyPayments();
 
       if(cloudPayments === null){
-
-        save();
-
         return false;
       }
 
-      const localPayments =
-        Array.isArray(
-          state.kelly.payments
-        )
-          ? state.kelly.payments
-          : [];
+      state.kelly = {
 
-      const paymentsById =
-        new Map();
+        original:
+          Number(
+            cloudKelly.original || 0
+          ),
 
-      cloudPayments.forEach(
-        payment => {
-
-          const localPayment =
-            localPayments.find(
-              p =>
-                p.id ===
-                payment.id
-            );
-
-          paymentsById.set(
-            payment.id,
-            {
+        payments:
+          cloudPayments.map(
+            payment => ({
 
               id:
-                payment.id,
+                String(payment.id),
 
               amount:
                 Number(
@@ -1150,85 +995,12 @@
                 payment.note || "",
 
               receiptUrl:
-                payment.receipt_url ||
-                localPayment?.receiptUrl ||
-                "",
+                payment.receipt_url || "",
 
-              receiptData:
-                localPayment?.receiptData ||
-                ""
-            }
-          );
-        }
-      );
-
-      for(
-        const localPayment
-        of localPayments
-      ){
-
-        if(
-          paymentsById.has(
-            localPayment.id
+              receiptData:""
+            })
           )
-        ){
-
-          continue;
-        }
-
-        const uploaded =
-          await apiCreateKellyPayment(
-            localPayment
-          );
-
-        if(uploaded){
-
-          paymentsById.set(
-            uploaded.id,
-            {
-
-              id:
-                uploaded.id,
-
-              amount:
-                Number(
-                  uploaded.amount || 0
-                ),
-
-              date:
-                String(
-                  uploaded.payment_date ||
-                  localPayment.date ||
-                  ""
-                ).slice(0,10),
-
-              method:
-                uploaded.method ||
-                localPayment.method ||
-                "",
-
-              note:
-                uploaded.note ||
-                localPayment.note ||
-                "",
-
-              receiptUrl:
-                uploaded.receipt_url ||
-                localPayment.receiptUrl ||
-                "",
-
-              receiptData:
-                localPayment.receiptData ||
-                ""
-            }
-          );
-        }
-      }
-
-      state.kelly.payments =
-        Array.from(
-          paymentsById.values()
-        );
+      };
 
       save();
 
@@ -1252,6 +1024,16 @@
 
   // ============================================================
   // LOCAL STORAGE
+  //
+  // Se mantiene para:
+  // - tema
+  // - frase
+  // - gastos
+  // - tareas
+  // - respaldo local
+  //
+  // PERO JUNTAS Y KELLY SE REEMPLAZAN POR NEON
+  // al iniciar correctamente.
   // ============================================================
 
   function load(){
@@ -1391,285 +1173,20 @@
 
 
   // ============================================================
-  // INICIO — RÁPIDO
-  // ============================================================
-
-  async function init(){
-
-    applyTheme();
-
-    render();
-
-    bindStatic();
-
-    rotatePhrase(false);
-
-    maybeKellyReminder();
-
-    prepareLoadingScreen();
-
-    setTimeout(
-      async () => {
-
-        try{
-
-          await ensureDefaultJuntaCloud();
-
-          await syncCloudData();
-
-          await ensureKellyCloud();
-
-          await syncKellyCloud();
-
-          render();
-
-          console.log(
-            "Mi Juntita: sincronización inicial completada."
-          );
-
-        }catch(error){
-
-          console.error(
-            "Error en sincronización inicial:",
-            error
-          );
-
-        }finally{
-
-          hideLoadingScreen();
-        }
-
-      },
-      0
-    );
-  }
-
-
-  // ============================================================
-  // EVENTOS
-  // ============================================================
-
-  function bindStatic(){
-
-    $("#themeBtn")?.addEventListener(
-      "click",
-      toggleTheme
-    );
-
-    $("#notifyBtn")?.addEventListener(
-      "click",
-      showNotifications
-    );
-
-    $("#shareBtn")?.addEventListener(
-      "click",
-      openShareMenu
-    );
-
-    $("#newJuntaBtn")?.addEventListener(
-      "click",
-      openNewJunta
-    );
-
-    $("#kellyBtn")?.addEventListener(
-      "click",
-      openKellyPayment
-    );
-
-    $("#gastoBtn")?.addEventListener(
-      "click",
-      openExpense
-    );
-
-    $("#settingsBtn")?.addEventListener(
-      "click",
-      openSettings
-    );
-
-    $("#modalClose")?.addEventListener(
-      "click",
-      closeModal
-    );
-
-    $("#modalBackdrop")?.addEventListener(
-      "click",
-      e => {
-
-        if(
-          e.target ===
-          $("#modalBackdrop")
-        ){
-
-          closeModal();
-        }
-      }
-    );
-
-
-    document.addEventListener(
-      "click",
-      e => {
-
-        const juntaDetail =
-          e.target.closest(
-            "[data-junta-payment-detail]"
-          );
-
-        if(juntaDetail){
-
-          openJuntaPaymentDetail(
-            juntaDetail.dataset.juntaId,
-            juntaDetail.dataset.juntaPaymentDetail
-          );
-
-          return;
-        }
-
-
-        const kellyDetail =
-          e.target.closest(
-            "[data-kelly-payment-detail]"
-          );
-
-        if(kellyDetail){
-
-          openKellyPaymentDetail(
-            kellyDetail.dataset.kellyPaymentDetail
-          );
-
-          return;
-        }
-
-
-        const img =
-          e.target.closest(
-            "[data-receipt-view]"
-          );
-
-        if(img){
-
-          openReceipt(
-            img.dataset.receiptView,
-            {
-              backType:
-                img.dataset.receiptBackType || "",
-
-              backId:
-                img.dataset.receiptBackId || "",
-
-              amount:
-                img.dataset.receiptAmount || "",
-
-              date:
-                img.dataset.receiptDate || "",
-
-              method:
-                img.dataset.receiptMethod || "",
-
-              note:
-                img.dataset.receiptNote || ""
-            }
-          );
-        }
-      }
-    );
-  }
-
-
-  // ============================================================
-  // TEMA
-  // ============================================================
-
-  function applyTheme(){
-
-    document.documentElement
-      .classList
-      .toggle(
-        "dark",
-        state.theme === "dark"
-      );
-
-    const themeBtn =
-      $("#themeBtn");
-
-    if(themeBtn){
-
-      themeBtn.textContent =
-        state.theme === "dark"
-          ? "☀"
-          : "☾";
-    }
-  }
-
-
-  function toggleTheme(){
-
-    state.theme =
-      state.theme === "dark"
-        ? "light"
-        : "dark";
-
-    save();
-
-    applyTheme();
-  }
-
-
-  // ============================================================
-  // FRASES
-  // ============================================================
-
-  function rotatePhrase(
-    animate=true
-  ){
-
-    const el =
-      $("#savingPhrase");
-
-    if(!el) return;
-
-    if(animate){
-
-      el.classList.add(
-        "phrase-swap"
-      );
-    }
-
-    setTimeout(() => {
-
-      state.phraseIndex =
-        (
-          state.phraseIndex + 1
-        ) %
-        PHRASES.length;
-
-      el.textContent =
-        PHRASES[
-          state.phraseIndex
-        ];
-
-      if(animate){
-
-        requestAnimationFrame(() =>
-          el.classList.remove(
-            "phrase-swap"
-          )
-        );
-      }
-
-      save();
-
-    }, animate ? 180 : 0);
-  }
-
-
-  // ============================================================
   // RENDER
   // ============================================================
 
   function render(){
 
-    renderJuntas();
+    if(!cloudReady){
+
+      renderJuntasLoading();
+
+    }else{
+
+      renderJuntas();
+
+    }
 
     renderExpenses();
 
@@ -1714,6 +1231,150 @@
 
 
   // ============================================================
+  // ESTADO DE CARGA PARA LA ZONA FINANCIERA
+  // ============================================================
+
+  function renderJuntasLoading(){
+
+    const grid =
+      $("#juntasGrid");
+
+    if(!grid) return;
+
+    if(cloudSyncFailed){
+
+      grid.innerHTML = `
+
+        <article class="card">
+
+          <div class="title-line">
+
+            <span class="symbol">
+              🌸
+            </span>
+
+            <h2>
+              No pudimos actualizar tus datos
+            </h2>
+
+          </div>
+
+          <p class="sub">
+            Mi Juntita no pudo conectarse con
+            tus datos en la nube.
+          </p>
+
+          <div class="card-actions">
+
+            <button
+              class="primary"
+              id="retryCloudSync"
+              type="button"
+            >
+              ↻ Reintentar
+            </button>
+
+          </div>
+
+        </article>
+      `;
+
+      $("#retryCloudSync")
+        ?.addEventListener(
+          "click",
+          retryCloudSync
+        );
+
+      return;
+    }
+
+    grid.innerHTML = `
+
+      <article
+        class="card"
+        aria-live="polite"
+      >
+
+        <div class="title-line">
+
+          <span class="symbol">
+            🌸
+          </span>
+
+          <h2>
+            Cargando tus datos…
+          </h2>
+
+        </div>
+
+        <div class="sub">
+          Estamos comprobando tus Juntas
+          y pagos actualizados.
+        </div>
+
+      </article>
+    `;
+  }
+
+
+  async function retryCloudSync(){
+
+    cloudSyncFailed = false;
+    cloudReady = false;
+
+    createLoadingScreen();
+
+    updateLoadingText(
+      "actualizando tus datos…"
+    );
+
+    render();
+
+    const juntasOk =
+      await syncCloudData();
+
+    if(!juntasOk){
+
+      cloudSyncFailed = true;
+      render();
+      updateLoadingText(
+        "No pudimos conectar con la nube."
+      );
+      hideLoadingScreen();
+      return;
+    }
+
+    updateLoadingText(
+      "cargando Kelly…"
+    );
+
+    const kellyOk =
+      await syncKellyCloud();
+
+    if(!kellyOk){
+
+      cloudSyncFailed = true;
+      render();
+      updateLoadingText(
+        "No pudimos cargar Kelly."
+      );
+      hideLoadingScreen();
+      return;
+    }
+
+    cloudReady = true;
+    cloudSyncFailed = false;
+
+    render();
+
+    setTimeout(
+      () => hideLoadingScreen(),
+      60
+    );
+  }
+
+
+  // ============================================================
   // JUNTAS
   // ============================================================
 
@@ -1729,7 +1390,7 @@
         .map((j, idx) => {
 
           const paid =
-            j.payments.reduce(
+            (j.payments || []).reduce(
               (s,p) =>
                 s +
                 Number(
@@ -1752,7 +1413,7 @@
               : 0;
 
           const receipts =
-            j.payments.filter(
+            (j.payments || []).filter(
               p =>
                 p.receiptUrl ||
                 p.receiptData
@@ -1760,6 +1421,13 @@
 
           const complete =
             paid >= j.goal;
+
+          const quotaTotal =
+            j.normal > 0
+              ? Math.round(
+                  j.goal / j.normal
+                )
+              : 0;
 
           return `
 
@@ -1835,7 +1503,7 @@
 
                 ${equivalent.toFixed(1)}
                 /
-                ${(j.goal/(j.normal||1)).toFixed(0)}
+                ${quotaTotal}
                 cuotas aprox.
 
               </span>
@@ -2500,8 +2168,8 @@
     const j =
       state.juntas.find(
         x =>
-          x.id ===
-          modalContext.juntaId
+          String(x.id) ===
+          String(modalContext?.juntaId)
       );
 
     if(!j){
@@ -2509,18 +2177,6 @@
       return toast(
         "No se encontró la junta."
       );
-    }
-
-    if(
-      j.id === "junta_default"
-    ){
-
-      const cloudReady =
-        await ensureDefaultJuntaCloud();
-
-      if(!cloudReady){
-        return;
-      }
     }
 
     let receiptUrl = "";
@@ -2555,7 +2211,7 @@
         uid("pay"),
 
       juntaId:
-        j.id,
+        String(j.id),
 
       amount,
 
@@ -2586,7 +2242,7 @@
     }
 
     const before =
-      j.payments.reduce(
+      (j.payments || []).reduce(
         (s,p) =>
           s +
           Number(
@@ -2601,18 +2257,29 @@
     j.payments.push({
 
       id:
-        payment.id,
+        String(
+          savedPayment.id ??
+          payment.id
+        ),
 
       amount:
-        payment.amount,
+        Number(
+          savedPayment.amount ??
+          payment.amount
+        ),
 
       date:
-        payment.date,
+        String(
+          savedPayment.payment_date ??
+          payment.date
+        ).slice(0,10),
 
       method:
+        savedPayment.method ??
         payment.method,
 
       note:
+        savedPayment.note ??
         payment.note,
 
       receiptUrl:
@@ -3019,13 +2686,6 @@
       return;
     }
 
-    const cloudReady =
-      await ensureKellyCloud();
-
-    if(!cloudReady){
-      return;
-    }
-
     let receiptUrl = "";
 
     try{
@@ -3088,18 +2748,29 @@
     state.kelly.payments.push({
 
       id:
-        payment.id,
+        String(
+          savedPayment.id ??
+          payment.id
+        ),
 
       amount:
-        payment.amount,
+        Number(
+          savedPayment.amount ??
+          payment.amount
+        ),
 
       date:
-        payment.date,
+        String(
+          savedPayment.payment_date ??
+          payment.date
+        ).slice(0,10),
 
       method:
+        savedPayment.method ??
         payment.method,
 
       note:
+        savedPayment.note ??
         payment.note,
 
       receiptUrl:
@@ -3456,7 +3127,8 @@
     const j =
       state.juntas.find(
         x =>
-          x.id === id
+          String(x.id) ===
+          String(id)
       );
 
     if(!j) return;
@@ -3480,19 +3152,12 @@
       <div class="history">
 
         ${
-          j.payments.length
-
+          (j.payments || []).length
             ?
-
           j.payments
             .slice()
             .reverse()
             .map(p => {
-
-              const receipt =
-                p.receiptUrl ||
-                p.receiptData ||
-                "";
 
               return `
 
@@ -3535,8 +3200,8 @@
                   <button
                     class="secondary"
                     type="button"
-                    data-junta-payment-detail="${esc(p.id)}"
-                    data-junta-id="${esc(j.id)}"
+                    data-junta-payment-detail="${esc(String(p.id))}"
+                    data-junta-id="${esc(String(j.id))}"
                   >
                     Ver detalle →
                   </button>
@@ -3562,7 +3227,7 @@
 
     `,{
       type:"juntaHistory",
-      juntaId:id
+      juntaId:String(id)
     });
   }
 
@@ -3579,15 +3244,17 @@
     const j =
       state.juntas.find(
         x =>
-          x.id === juntaId
+          String(x.id) ===
+          String(juntaId)
       );
 
     if(!j) return;
 
     const payment =
-      j.payments.find(
+      (j.payments || []).find(
         p =>
-          p.id === paymentId
+          String(p.id) ===
+          String(paymentId)
       );
 
     if(!payment){
@@ -3614,16 +3281,13 @@
           ← Volver a movimientos
         </button>
 
-
         <h2>
           🌸 Detalle del aporte
         </h2>
 
-
         <p class="intro">
           ${esc(j.name)}
         </p>
-
 
         <div class="readonly-box">
 
@@ -3641,7 +3305,6 @@
 
           </div>
 
-
           <div style="margin-bottom:8px">
 
             <small>
@@ -3655,7 +3318,6 @@
             </strong>
 
           </div>
-
 
           <div style="margin-bottom:8px">
 
@@ -3675,7 +3337,6 @@
             </strong>
 
           </div>
-
 
           ${
             payment.note
@@ -3698,7 +3359,6 @@
           }
 
         </div>
-
 
         ${
           receipt
@@ -3767,7 +3427,6 @@
         💗 Pagos de Kelly
       </h2>
 
-
       <p class="intro">
 
         Toca un pago para revisar
@@ -3775,14 +3434,11 @@
 
       </p>
 
-
       <div class="history">
 
         ${
           payments.length
-
             ?
-
           payments
             .slice()
             .reverse()
@@ -3824,11 +3480,10 @@
 
                 </div>
 
-
                 <button
                   class="secondary"
                   type="button"
-                  data-kelly-payment-detail="${esc(p.id)}"
+                  data-kelly-payment-detail="${esc(String(p.id))}"
                 >
                   Ver detalle →
                 </button>
@@ -3869,7 +3524,8 @@
     const payment =
       state.kelly.payments.find(
         p =>
-          p.id === paymentId
+          String(p.id) ===
+          String(paymentId)
       );
 
     if(!payment){
@@ -3896,16 +3552,13 @@
           ← Volver a pagos
         </button>
 
-
         <h2>
           💗 Detalle del pago
         </h2>
 
-
         <p class="intro">
           Pago registrado para Kelly
         </p>
-
 
         <div class="readonly-box">
 
@@ -3923,7 +3576,6 @@
 
           </div>
 
-
           <div style="margin-bottom:8px">
 
             <small>
@@ -3937,7 +3589,6 @@
             </strong>
 
           </div>
-
 
           <div style="margin-bottom:8px">
 
@@ -3957,7 +3608,6 @@
             </strong>
 
           </div>
-
 
           ${
             payment.note
@@ -3980,7 +3630,6 @@
           }
 
         </div>
-
 
         ${
           receipt
@@ -4075,11 +3724,9 @@
           ${backLabel}
         </button>
 
-
         <h2>
           📷 Comprobante
         </h2>
-
 
         ${
           detail.amount ||
@@ -4110,7 +3757,6 @@
                     : ""
                 }
 
-
                 ${
                   detail.date
                     ? `
@@ -4135,7 +3781,6 @@
                     : ""
                 }
 
-
                 ${
                   detail.method
                     ? `
@@ -4155,7 +3800,6 @@
                     `
                     : ""
                 }
-
 
                 ${
                   detail.note
@@ -4181,7 +3825,6 @@
             `
             : ""
         }
-
 
         <img
           class="photo-modal-preview"
@@ -4330,13 +3973,14 @@
       const j =
         state.juntas.find(
           x =>
-            x.id === id
+            String(x.id) ===
+            String(id)
         );
 
       if(!j) return;
 
       const paid =
-        j.payments.reduce(
+        (j.payments || []).reduce(
           (s,p) =>
             s +
             Number(
@@ -4356,7 +4000,7 @@
           : 0;
 
       const receipts =
-        j.payments
+        (j.payments || [])
           .map(
             p =>
               p.receiptUrl ||
@@ -4817,7 +4461,6 @@
       monthKey &&
 
       state.kelly.original >
-
       state.kelly.payments.reduce(
         (s,p) =>
           s +
@@ -5046,9 +4689,42 @@
           return;
         }
 
-        state.juntas.push(
-          junta
-        );
+        state.juntas.push({
+
+          id:
+            String(
+              savedJunta.id ??
+              junta.id
+            ),
+
+          name:
+            savedJunta.name ??
+            junta.name,
+
+          goal:
+            Number(
+              savedJunta.goal ??
+              junta.goal
+            ),
+
+          normal:
+            Number(
+              savedJunta.normal ??
+              junta.normal
+            ),
+
+          modality:
+            savedJunta.modality ??
+            junta.modality,
+
+          variable:
+            Boolean(
+              savedJunta.variable ??
+              junta.variable
+            ),
+
+          payments:[]
+        });
 
         save();
 
@@ -5262,6 +4938,323 @@
 
   // ============================================================
   // ARRANCAR APP
+  //
+  // IMPORTANTE:
+  // NO renderizamos la información financiera "vieja"
+  // y NO ocultamos el loader después de 1.5 segundos.
+  //
+  // Esperamos realmente a Neon.
+  // ============================================================
+
+  async function init(){
+
+    // El loader se crea primero.
+    createLoadingScreen();
+
+    applyTheme();
+
+    bindStatic();
+
+    rotatePhrase(false);
+
+    // Pintamos solamente el estado de carga.
+    render();
+
+    updateLoadingText(
+      "cargando tus Juntas…"
+    );
+
+    try{
+
+      const juntasOk =
+        await syncCloudData();
+
+      if(!juntasOk){
+
+        throw new Error(
+          "No se pudieron sincronizar las Juntas."
+        );
+      }
+
+      updateLoadingText(
+        "cargando Kelly…"
+      );
+
+      const kellyOk =
+        await syncKellyCloud();
+
+      if(!kellyOk){
+
+        throw new Error(
+          "No se pudo sincronizar Kelly."
+        );
+      }
+
+      cloudReady = true;
+      cloudSyncFailed = false;
+
+      // Ahora sí mostramos la información real.
+      render();
+
+      // El recordatorio debe calcularse con
+      // los datos reales de Neon, no con el estado viejo.
+      maybeKellyReminder();
+
+      console.log(
+        "Mi Juntita: sincronización inicial completada."
+      );
+
+      // Le damos un instante al DOM/Enhancements
+      // para reconstruir las tarjetas reales.
+      setTimeout(
+        () => hideLoadingScreen(),
+        80
+      );
+
+    }catch(error){
+
+      console.error(
+        "Error en sincronización inicial:",
+        error
+      );
+
+      cloudReady = false;
+      cloudSyncFailed = true;
+
+      render();
+
+      updateLoadingText(
+        "No pudimos actualizar tus datos."
+      );
+
+      setTimeout(
+        () => hideLoadingScreen(),
+        300
+      );
+    }
+  }
+
+
+  // ============================================================
+  // EVENTOS
+  // ============================================================
+
+  function bindStatic(){
+
+    $("#themeBtn")?.addEventListener(
+      "click",
+      toggleTheme
+    );
+
+    $("#notifyBtn")?.addEventListener(
+      "click",
+      showNotifications
+    );
+
+    $("#shareBtn")?.addEventListener(
+      "click",
+      openShareMenu
+    );
+
+    $("#newJuntaBtn")?.addEventListener(
+      "click",
+      openNewJunta
+    );
+
+    $("#kellyBtn")?.addEventListener(
+      "click",
+      openKellyPayment
+    );
+
+    $("#gastoBtn")?.addEventListener(
+      "click",
+      openExpense
+    );
+
+    $("#settingsBtn")?.addEventListener(
+      "click",
+      openSettings
+    );
+
+    $("#modalClose")?.addEventListener(
+      "click",
+      closeModal
+    );
+
+    $("#modalBackdrop")?.addEventListener(
+      "click",
+      e => {
+
+        if(
+          e.target ===
+          $("#modalBackdrop")
+        ){
+
+          closeModal();
+        }
+      }
+    );
+
+
+    document.addEventListener(
+      "click",
+      e => {
+
+        const juntaDetail =
+          e.target.closest(
+            "[data-junta-payment-detail]"
+          );
+
+        if(juntaDetail){
+
+          openJuntaPaymentDetail(
+            juntaDetail.dataset.juntaId,
+            juntaDetail.dataset.juntaPaymentDetail
+          );
+
+          return;
+        }
+
+
+        const kellyDetail =
+          e.target.closest(
+            "[data-kelly-payment-detail]"
+          );
+
+        if(kellyDetail){
+
+          openKellyPaymentDetail(
+            kellyDetail.dataset.kellyPaymentDetail
+          );
+
+          return;
+        }
+
+
+        const img =
+          e.target.closest(
+            "[data-receipt-view]"
+          );
+
+        if(img){
+
+          openReceipt(
+            img.dataset.receiptView,
+            {
+              backType:
+                img.dataset.receiptBackType || "",
+
+              backId:
+                img.dataset.receiptBackId || "",
+
+              amount:
+                img.dataset.receiptAmount || "",
+
+              date:
+                img.dataset.receiptDate || "",
+
+              method:
+                img.dataset.receiptMethod || "",
+
+              note:
+                img.dataset.receiptNote || ""
+            }
+          );
+        }
+      }
+    );
+  }
+
+
+  // ============================================================
+  // TEMA
+  // ============================================================
+
+  function applyTheme(){
+
+    document.documentElement
+      .classList
+      .toggle(
+        "dark",
+        state.theme === "dark"
+      );
+
+    const themeBtn =
+      $("#themeBtn");
+
+    if(themeBtn){
+
+      themeBtn.textContent =
+        state.theme === "dark"
+          ? "☀"
+          : "☾";
+    }
+  }
+
+
+  function toggleTheme(){
+
+    state.theme =
+      state.theme === "dark"
+        ? "light"
+        : "dark";
+
+    save();
+
+    applyTheme();
+  }
+
+
+  // ============================================================
+  // FRASES
+  // ============================================================
+
+  function rotatePhrase(
+    animate=true
+  ){
+
+    const el =
+      $("#savingPhrase");
+
+    if(!el) return;
+
+    if(animate){
+
+      el.classList.add(
+        "phrase-swap"
+      );
+    }
+
+    setTimeout(() => {
+
+      state.phraseIndex =
+        (
+          state.phraseIndex + 1
+        ) %
+        PHRASES.length;
+
+      el.textContent =
+        PHRASES[
+          state.phraseIndex
+        ];
+
+      if(animate){
+
+        requestAnimationFrame(() =>
+          el.classList.remove(
+            "phrase-swap"
+          )
+        );
+      }
+
+      save();
+
+    }, animate ? 180 : 0);
+  }
+
+
+  // ============================================================
+  // INICIAR
   // ============================================================
 
   init();
