@@ -1375,6 +1375,17 @@
   async function delegateClicks(event) {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    // Evita guardar dos veces cuando se hace doble clic
+// en Guardar aporte o Guardar pago.
+const paymentSaveButton = target.closest(
+  "#saveJuntaPayment, #saveKellyPayment"
+);
+
+if (paymentSaveButton && event.detail > 1) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  return;
+}
 
     const historyButton = target.closest("[data-junta-history]");
     if (historyButton && !sharedMode) {
