@@ -17,25 +17,32 @@
 
   // ============================================================
   // JUNTAS COMPLETADAS
-  // Durante la prueba duran 2 minutos.
-  // Para producción cambia TEST_ARCHIVE_MS por REAL_ARCHIVE_MS.
+  // En producción una Junta completada NO se conserva en
+  // "Juntas anteriores": se elimina de la interfaz y de Neon.
   // ============================================================
 
   const ARCHIVE_KEY = "miJuntita.completedJuntas.v1";
   const HIDDEN_COMPLETED_KEY = "miJuntita.hiddenCompletedJuntas.v1";
 
-  const REAL_ARCHIVE_MS = 14 * 24 * 60 * 60 * 1000;
+  const TEST_JUNTA_NAMES = new Set([
+    "junta test",
+    "junta de prueba",
+    "junta prueba"
+  ]);
 
-// Producción: una Junta completada permanece 14 días
-// en "Juntas anteriores".
-const ARCHIVE_DURATION_MS = REAL_ARCHIVE_MS;
+  function isKnownTestJunta(junta) {
+    const name = String(junta?.name || "").trim().toLowerCase();
+    return TEST_JUNTA_NAMES.has(name) || name.includes("test") || name.includes("prueba");
+  }
 
-// Solo se utiliza para reconocer y borrar
-// registros antiguos creados durante las pruebas.
-const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
-  // Limpieza temporal de pruebas conocidas.
-  // Esto evita que una "Junta Test" vuelva a aparecer mientras terminamos las pruebas.
-  
+  function clearCompletedJuntaArchive() {
+    try {
+      localStorage.removeItem(ARCHIVE_KEY);
+      localStorage.removeItem(HIDDEN_COMPLETED_KEY);
+    } catch (error) {
+      console.warn("No se pudo limpiar el historial local de Juntas anteriores:", error);
+    }
+  }
 
   // Cuando Kelly alcanza el 100 %, se retira de la interfaz.
   // Conservamos sus pagos en Neon para no perder el historial.
@@ -228,291 +235,31 @@ const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
   }
 
   function getCompletedArchive() {
-    function purgeLegacyTestArchives() {
-  const archive = getCompletedArchive();
-
-  if (!archive.length) return;
-
-  const cleaned = archive.filter(item => {
-    const completedAt = Number(item?.completedAt || 0);
-    const expiresAt = Number(item?.expiresAt || 0);
-
-    if (!completedAt || !expiresAt) {
-      return true;
-    }
-
-    const duration = expiresAt - completedAt;
-
-    // Las antiguas pruebas tenían exactamente 2 minutos.
-    // Las eliminamos una sola vez.
-    return duration > LEGACY_TEST_ARCHIVE_MS + 5000;
-  });
-
-  if (cleaned.length !== archive.length) {
-    writeJsonStorage(ARCHIVE_KEY, cleaned);
-  }
-}
-    const value = readJsonStorage(ARCHIVE_KEY, []);
-    return Array.isArray(value) ? value : [];
+    return [];
   }
 
   function getHiddenCompletedIds() {
-    const value = readJsonStorage(HIDDEN_COMPLETED_KEY, []);
-    return Array.isArray(value) ? value : [];
+    return [];
   }
 
   function cleanCompletedArchive() {
-    const now = Date.now();
-    const archive = getCompletedArchive();
-    const hidden = new Set(getHiddenCompletedIds());
-
-    const activeArchive = [];
-    let changed = false;
-
-    for (const item of archive) {
-      if (!item?.id || !item.expiresAt) {
-        changed = true;
-        continue;
-      }
-
-      if (Number(item.expiresAt) <= now) {
-        hidden.add(item.id);
-        changed = true;
-        continue;
-      }
-
-      activeArchive.push(item);
-    }
-
-    if (changed) {
-      writeJsonStorage(ARCHIVE_KEY, activeArchive);
-      writeJsonStorage(HIDDEN_COMPLETED_KEY, Array.from(hidden));
-    }
-
-    return activeArchive;
+    clearCompletedJuntaArchive();
+    return [];
   }
 
   function isJuntaSuppressed(id) {
-    if (!id) return false;
-
-    const archived = getCompletedArchive().some(
-      item => item?.id === id
-    );
-
-    const hidden = getHiddenCompletedIds().includes(id);
-
-    return archived || hidden;
+    return false;
   }
 
   function getJuntaPaid(junta) {
     return (junta?.payments || []).reduce(
-      (sum, payment) =>
-        sum + Number(payment?.amount || 0),
+      (sum, payment) => sum + Number(payment?.amount || 0),
       0
     );
   }
 
   function archiveCompletedJuntas(state) {
-  if (!state) return;
-
-  // Limpia las Juntas anteriores creadas con el antiguo
-  // temporizador de 2 minutos.
-  purgeLegacyTestArchives();
-
-  cleanCompletedArchive();
-
-  const archive = getCompletedArchive();
-  const hidden = new Set(getHiddenCompletedIds());
-  const byId = new Map(
-    archive.map(item => [item.id, item])
-  );
-
-  let changed = false;
-
-    for (const junta of state.juntas || []) {
-      if (!junta?.id || hidden.has(junta.id)) {
-        continue;
-      }
-
-     
-
-      const paid = getJuntaPaid(junta);
-      const goal = Number(junta.goal || 0);
-
-      if (goal <= 0 || paid < goal) {
-        continue;
-      }
-
-      const current = byId.get(junta.id);
-
-      if (current) {
-        continue;
-      }
-
-      const completedAt = Date.now();
-
-      byId.set(junta.id, {
-        id: junta.id,
-        name: junta.name || "Junta",
-        goal,
-        normal: Number(junta.normal || 0),
-        modality: junta.modality || "",
-        variable: Boolean(junta.variable),
-        paid,
-        completedAt,
-        expiresAt: completedAt + ARCHIVE_DURATION_MS,
-        payments: Array.isArray(junta.payments)
-          ? junta.payments.map(payment => ({
-              id: payment.id,
-              amount: Number(payment.amount || 0),
-              date: payment.date || "",
-              method: payment.method || "",
-              note: payment.note || "",
-              receiptUrl: payment.receiptUrl || payment.receiptData || ""
-            }))
-          : []
-      });
-
-      changed = true;
-    }
-
-    if (changed) {
-      writeJsonStorage(
-        ARCHIVE_KEY,
-        Array.from(byId.values())
-      );
-    }
-
-    scheduleArchiveCleanup();
-  }
-
-  function remainingArchiveText(expiresAt) {
-    const remaining =
-      Math.max(0, Number(expiresAt || 0) - Date.now());
-
-    if (remaining < 60 * 1000) {
-      return `${Math.max(1, Math.ceil(remaining / 1000))} s para quitar esta Junta`;
-    }
-
-    const minutes = Math.ceil(remaining / (60 * 1000));
-    return `${minutes} min para quitar esta Junta`;
-  }
-
-  function scheduleArchiveCleanup() {
-    if (archiveCleanupTimer) {
-      clearTimeout(archiveCleanupTimer);
-      archiveCleanupTimer = null;
-    }
-
-    const archive = getCompletedArchive();
-    if (!archive.length) return;
-
-    const next = archive
-      .map(item => Number(item.expiresAt || 0))
-      .filter(Boolean)
-      .sort((a, b) => a - b)[0];
-
-    if (!next) return;
-
-    const delay = Math.max(250, next - Date.now() + 50);
-
-    archiveCleanupTimer = setTimeout(() => {
-      cleanCompletedArchive();
-      enhanceMain();
-    }, delay);
-  }
-
-  function makePreviousJuntaCard(item, index = 0) {
-    const article = document.createElement("article");
-    article.className = "mj-previous-junta";
-    article.style.setProperty("--mj-delay", `${index * 70}ms`);
-
-    if (
-      lastSaved?.type === "junta" &&
-      lastSaved.parentId === item.id
-    ) {
-      article.classList.add("mj-archive-new");
-    }
-
-    const goal = Number(item.goal || 0);
-    const paid = Number(item.paid || 0);
-    const pct = goal
-      ? Math.min(100, paid / goal * 100)
-      : 100;
-
-    article.innerHTML = `
-      <div class="mj-previous-icon">✓</div>
-
-      <div class="mj-previous-main">
-        <div class="mj-previous-top">
-          <div>
-            <b>${esc(item.name || "Junta")}</b>
-            <small>Completada · ${esc(formatDate(item.completedAt ? new Date(item.completedAt).toISOString().slice(0,10) : ""))}</small>
-          </div>
-          <strong>${money(paid)}</strong>
-        </div>
-
-        <div class="mj-previous-bar">
-          <span style="width:${pct}%"></span>
-        </div>
-
-        <div class="mj-previous-meta">
-          <span>Meta ${money(goal)}</span>
-          <span>100% completada</span>
-        </div>
-
-        <div class="mj-previous-actions">
-          <button
-            class="secondary"
-            type="button"
-            data-mj-archive-history="true"
-            data-mj-archive-id="${esc(item.id)}"
-          >
-            Ver historial →
-          </button>
-          <small class="mj-archive-expiry" data-mj-expiry="${esc(item.id)}">
-            ${esc(remainingArchiveText(item.expiresAt))}
-          </small>
-        </div>
-      </div>
-    `;
-
-    return article;
-  }
-
-  function appendPreviousJuntas(container) {
-    const archive = cleanCompletedArchive()
-      .slice()
-      .sort(
-        (a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0)
-      );
-
-    if (!archive.length) return;
-
-    const wrapper = document.createElement("section");
-    wrapper.className = "mj-previous-section";
-    wrapper.innerHTML = `
-      <div class="mj-previous-heading">
-        <div>
-          <div class="mj-section-eyebrow">HISTORIAL</div>
-          <h3>Juntas anteriores</h3>
-          <p>Las juntas completadas aparecen aquí por un tiempo.</p>
-        </div>
-        <span class="mj-previous-count">${archive.length}</span>
-      </div>
-    `;
-
-    const list = document.createElement("div");
-    list.className = "mj-previous-list";
-
-    archive.forEach((item, index) => {
-      list.appendChild(
-        makePreviousJuntaCard(item, index)
-      );
-    });
-
-    wrapper.appendChild(list);
-    container.appendChild(wrapper);
+    clearCompletedJuntaArchive();
   }
 
   function paymentSignature(state) {
@@ -706,56 +453,132 @@ const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
     const layer = $("#celebrationLayer");
     if (!layer) return;
 
-    layer
-      .querySelectorAll(".celebrate-piece, .mj-payment-star")
-      .forEach(el => el.remove());
-
     const symbols = type === "kelly"
-      ? ["💗", "♡", "💌", "✦", "✨"]
-      : ["🌸", "🌷", "✦", "✧", "✨"];
+      ? ["✦", "💗", "✨", "♡", "✦"]
+      : ["✦", "✧", "🌸", "✨", "★"];
 
-    // Pequeño plop central antes de que salgan los emojis.
-    const plop = document.createElement("span");
-    plop.className = "celebrate-piece";
-    plop.textContent = type === "kelly" ? "💗" : "🌸";
-    plop.style.setProperty("--x", "0px");
-    plop.style.setProperty("--y", "0px");
-    plop.style.setProperty("--scale", "1");
-    plop.style.setProperty("--rot", "0deg");
-    plop.style.setProperty("--duration", "650ms");
-    plop.style.fontSize = "30px";
-    plop.style.animation = "none";
-    plop.animate(
-      [
-        { opacity: 0, transform: "translate(-50%,-50%) scale(.35)" },
-        { opacity: 1, transform: "translate(-50%,-50%) scale(1.18)" },
-        { opacity: 0, transform: "translate(-50%,-50%) scale(.92)" }
-      ],
-      { duration: 650, easing: "cubic-bezier(.16,.8,.25,1)" }
+    for (let i = 0; i < 14; i++) {
+      const star = document.createElement("span");
+      star.className = "mj-payment-star";
+      star.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+      star.style.setProperty("--mj-star-x", `${(Math.random() - .5) * 72}vw`);
+      star.style.setProperty("--mj-star-y", `${(Math.random() - .5) * 58}vh`);
+      star.style.setProperty("--mj-star-r", `${(Math.random() - .5) * 70}deg`);
+      star.style.setProperty("--mj-star-scale", `${.72 + Math.random() * .62}`);
+      star.style.setProperty("--mj-star-delay", `${Math.random() * .16}s`);
+      layer.appendChild(star);
+
+      setTimeout(() => star.remove(), 1500);
+    }
+  }
+
+  async function deleteJuntaFromCloud(juntaId) {
+    if (!juntaId) return false;
+
+    try {
+      const response = await fetch("/api/delete-junta", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({ juntaId })
+      });
+
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        console.warn("No se pudo eliminar la Junta:", data?.error || response.status);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.warn("No se pudo conectar con la limpieza de Juntas:", error);
+      return false;
+    }
+  }
+
+  async function purgeObsoleteJuntasFromCloud(state) {
+    if (sharedMode || !state?.juntas?.length) return;
+
+    const INITIAL_CLEANUP_KEY = "miJuntita.initialCleanup.v2";
+    const initialCleanupDone = localStorage.getItem(INITIAL_CLEANUP_KEY) === "1";
+
+    let obsolete = [];
+
+    if (!initialCleanupDone) {
+      // Limpieza única de los datos de prueba/anteriores:
+      // conservamos solamente la Junta normal de S/4,000.
+      const candidates = (state.juntas || []).filter(junta => {
+        if (!junta?.id) return false;
+        const name = String(junta.name || "").trim().toLowerCase();
+        const goal = Number(junta.goal || 0);
+        const normal = Number(junta.normal || 0);
+        return name === "junta" && goal === 4000 && normal === 250;
+      });
+
+      const keep = candidates[0]
+        || (state.juntas || []).find(junta => {
+          return junta?.id
+            && Number(junta.goal || 0) === 4000
+            && Number(junta.normal || 0) === 250;
+        });
+
+      // Solo ejecutamos la limpieza masiva si encontramos la Junta normal.
+      // Así no corremos el riesgo de borrar todo ante un estado incompleto.
+      if (keep) {
+        obsolete = (state.juntas || []).filter(
+          junta => junta?.id && String(junta.id) !== String(keep.id)
+        );
+      }
+    }
+
+    // Regla permanente: una Junta completada o una Junta de prueba no se conserva.
+    for (const junta of state.juntas || []) {
+      if (!junta?.id) continue;
+
+      const alreadySelected = obsolete.some(
+        item => String(item.id) === String(junta.id)
+      );
+      if (alreadySelected) continue;
+
+      const paid = getJuntaPaid(junta);
+      const goal = Number(junta.goal || 0);
+
+      if (isKnownTestJunta(junta) || (goal > 0 && paid >= goal)) {
+        obsolete.push(junta);
+      }
+    }
+
+    // Quitar duplicados por seguridad.
+    const unique = Array.from(
+      new Map(obsolete.map(junta => [String(junta.id), junta])).values()
     );
-    layer.appendChild(plop);
-    setTimeout(() => plop.remove(), 700);
 
-    // Explosión compacta desde el centro, como el efecto original.
-    for (let i = 0; i < 18; i++) {
-      const piece = document.createElement("span");
-      piece.className = "celebrate-piece";
-      piece.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+    if (!unique.length) {
+      if (!initialCleanupDone) {
+        const keepExists = (state.juntas || []).some(junta => {
+          return junta?.id
+            && String(junta.name || "").trim().toLowerCase() === "junta"
+            && Number(junta.goal || 0) === 4000
+            && Number(junta.normal || 0) === 250;
+        });
 
-      const angle = (Math.PI * 2 * i) / 18 + (Math.random() - .5) * .35;
-      const distance = 95 + Math.random() * 190;
-      const x = Math.cos(angle) * distance;
-      const y = Math.sin(angle) * distance * .78;
+        if (keepExists) {
+          localStorage.setItem(INITIAL_CLEANUP_KEY, "1");
+        }
+      }
+      return;
+    }
 
-      piece.style.setProperty("--x", `${x}px`);
-      piece.style.setProperty("--y", `${y}px`);
-      piece.style.setProperty("--scale", `${.72 + Math.random() * .52}`);
-      piece.style.setProperty("--rot", `${(Math.random() - .5) * 70}deg`);
-      piece.style.setProperty("--duration", `${900 + Math.random() * 350}ms`);
-      piece.style.animationDelay = `${Math.random() * 80}ms`;
+    const results = await Promise.all(
+      unique.map(junta => deleteJuntaFromCloud(junta.id))
+    );
 
-      layer.appendChild(piece);
-      setTimeout(() => piece.remove(), 1450);
+    if (results.every(Boolean)) {
+      clearCompletedJuntaArchive();
+      localStorage.setItem(INITIAL_CLEANUP_KEY, "1");
+      setTimeout(() => window.location.reload(), 250);
     }
   }
 
@@ -780,6 +603,7 @@ const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
 
     detectNewRecord(state);
     archiveCompletedJuntas(state);
+    void purgeObsoleteJuntasFromCloud(state);
 
     const juntaCards = Array.from(grid.children)
       .filter(el => el.classList.contains("card"))
@@ -840,8 +664,6 @@ const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
     }
 
     savings.appendChild(savingsCards);
-    appendPreviousJuntas(savings);
-
     grid.appendChild(savings);
 
     // Kelly desaparece de la interfaz cuando queda completamente pagada.
@@ -889,38 +711,12 @@ const LEGACY_TEST_ARCHIVE_MS = 2 * 60 * 1000;
       }, 3200);
     }
 
-    // Actualiza el contador de vencimiento mientras la tarjeta está visible.
-    document
-      .querySelectorAll("[data-mj-expiry]")
-      .forEach(el => {
-        const id = el.dataset.mjExpiry || "";
-        const item = getCompletedArchive().find(x => x.id === id);
-        if (!item) return;
-
-        const update = () => {
-          if (!document.body.contains(el)) return;
-          el.textContent = remainingArchiveText(item.expiresAt);
-        };
-
-        update();
-        const interval = setInterval(update, 1000);
-
-        const observer = new MutationObserver(() => {
-          if (!document.body.contains(el)) {
-            clearInterval(interval);
-            observer.disconnect();
-          }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-      });
-
     structuring = false;
 
     if (observerWasConnected) {
       gridObserver.observe(grid, { childList: true, subtree: false });
     }
 
-    scheduleArchiveCleanup();
   }
 
   function historyRows(type, parentId = "") {
