@@ -1269,15 +1269,24 @@
     }
 
     const kellyAdd = target.closest("[data-kelly-add-enhanced]");
-    if (kellyAdd && !sharedMode) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
 
-      const launcher = $("#kellyBtn");
-      if (!launcher) {
-        toast("No se encontró el registro de Kelly.");
-        return;
-      }
+if (kellyAdd && !sharedMode) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  const app = APP();
+
+  if (typeof app?.openKellyPayment !== "function") {
+    toast("No se pudo abrir el registro de Kelly.");
+    console.error(
+      "Mi Juntita: openKellyPayment no está disponible."
+    );
+    return;
+  }
+
+  app.openKellyPayment();
+  return;
+}
 
       // Abrimos el flujo ORIGINAL de app.js.
       // Lo hacemos mediante un evento nativo sobre el botón original y
