@@ -1452,7 +1452,13 @@
     if (kellyAdd && !sharedMode) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      const launcher = $("#kellyBtn");
+
+      // No dependemos únicamente del lanzador oculto #kellyBtn.
+      // Versiones anteriores de app.js todavía tienen el botón .kelly-action
+      // y ese botón conserva el listener original de registro.
+      // Usamos cualquiera de los dos para mantener compatibilidad.
+      const launcher = $("#kellyBtn") || $(".kelly-action");
+
       if (launcher) {
         launcher.click();
       } else {
