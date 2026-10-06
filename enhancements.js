@@ -1400,12 +1400,23 @@
     }
 
     const kellyAdd = target.closest("[data-kelly-add-enhanced]");
-    if (kellyAdd && !sharedMode) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      $("#kellyBtn")?.click();
-      return;
-    }
+
+if (kellyAdd && !sharedMode) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  const app = APP();
+
+  if (typeof app?.openKellyPayment === "function") {
+    app.openKellyPayment();
+  } else {
+    console.error(
+      "No se pudo abrir el formulario de pago de Kelly."
+    );
+  }
+
+  return;
+}
 
     const kellyShare = target.closest("[data-kelly-share-enhanced]");
     if (kellyShare && !sharedMode) {
