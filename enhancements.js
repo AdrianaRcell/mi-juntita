@@ -14,6 +14,7 @@
   let gridObserver = null;
   let currentDetailContext = null;
   let lastStarSignature = "";
+  let kellyResetInProgress = false;
 
   // ============================================================
   // JUNTAS COMPLETADAS
@@ -24,15 +25,32 @@
   const ARCHIVE_KEY = "miJuntita.completedJuntas.v1";
   const HIDDEN_COMPLETED_KEY = "miJuntita.hiddenCompletedJuntas.v1";
 
-  const TEST_JUNTA_NAMES = new Set([
-    "junta test",
-    "junta de prueba",
-    "junta prueba"
-  ]);
+  // Las Juntas de prueba antiguas se limpian una sola vez mediante la
+  // migración inicial (conservando la Junta real de S/4,000).
+  // Después de esa migración NO se usa el nombre de la Junta para borrarla,
+  // porque una Junta nueva puede tener cualquier nombre.
+  function isKnownTestJunta() {
+    return false;
+  }
 
-  function isKnownTestJunta(junta) {
-    const name = String(junta?.name || "").trim().toLowerCase();
-    return TEST_JUNTA_NAMES.has(name) || name.includes("test") || name.includes("prueba");
+  function isJuntaCompleted(junta) {
+    const goal = Number(junta?.goal || 0);
+    const paid = getJuntaPaid(junta);
+    return goal > 0 && paid >= goal;
+  }
+
+  function ensureKellyState(state) {
+    if (!state) return;
+    if (!state.kelly || typeof state.kelly !== "object") {
+      state.kelly = { original: 2800, payments: [] };
+      return;
+    }
+    if (!Number.isFinite(Number(state.kelly.original)) || Number(state.kelly.original) <= 0) {
+      state.kelly.original = 2800;
+    }
+    if (!Array.isArray(state.kelly.payments)) {
+      state.kelly.payments = [];
+    }
   }
 
   function clearCompletedJuntaArchive() {
@@ -45,17 +63,15 @@
   }
 
   // Cuando Kelly alcanza el 100 %, se retira de la interfaz.
-  // Conservamos sus pagos en Neon para no perder el historial.
+  // Sus pagos siguen conservándose en Neon.
   function isKellyCompleted(state) {
-    const original = Number(state?.kelly?.original || 0);
-    if (original <= 0) return false;
-
+    ensureKellyState(state);
+    const original = Number(state?.kelly?.original || 2800);
     const paid = (state?.kelly?.payments || []).reduce(
       (sum, payment) => sum + Number(payment?.amount || 0),
       0
     );
-
-    return paid >= original;
+    return original > 0 && paid >= original;
   }
 
   let archiveCleanupTimer = null;
@@ -139,28 +155,6 @@
       }
     `;
 
-    document.head.appendChild(style);
-  }
-
-  function injectKellyLauncherStyles() {
-    if (document.getElementById("mj-kelly-launcher-styles")) return;
-
-    const style = document.createElement("style");
-    style.id = "mj-kelly-launcher-styles";
-    style.textContent = `
-      .mj-kelly-launcher{
-        position:absolute !important;
-        left:-10000px !important;
-        top:auto !important;
-        width:1px !important;
-        height:1px !important;
-        margin:0 !important;
-        padding:0 !important;
-        overflow:hidden !important;
-        opacity:0 !important;
-        pointer-events:none !important;
-      }
-    `;
     document.head.appendChild(style);
   }
 
@@ -325,6 +319,134 @@
     lastSignature = signature;
   }
 
+  const PAYMENT_ANIMATION_KEY = "miJuntita.paymentAnimation.v2";
+  const KELLY_RESET_DONE_KEY = "miJuntita.kellyReset.done.v2";
+  const KELLY_RESET_PENDING_KEY = "miJuntita.kellyReset.pending.v2";
+
+  function paymentAnimationSnapshot(state) {
+    return {
+      juntas: (state?.juntas || []).reduce((acc, junta) => {
+        acc[String(junta?.id || "")] = {
+          count: Array.isArray(junta?.payments) ? junta.payments.length : 0,
+          lastId: String(junta?.payments?.[junta.payments.length - 1]?.id ?? "")
+        };
+        return acc;
+      }, {}),
+      kelly: {
+        count: Array.isArray(state?.kelly?.payments) ? state.kelly.payments.length : 0,
+        lastId: String(state?.kelly?.payments?.[state.kelly.payments.length - 1]?.id ?? "")
+      }
+    };
+  }
+
+  function persistLocalState(state) {
+    try {
+      localStorage.setItem("miJuntita.v2", JSON.stringify(state));
+    } catch (error) {
+      console.warn("No se pudo actualizar la copia local:", error);
+    }
+  }
+
+  async function deleteKellyPaymentForReset(payment) {
+    const response = await fetch("/api/delete-kelly-payment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        paymentId: payment?.id,
+        receiptUrl: payment?.receiptUrl || payment?.receipt_url || ""
+      })
+    });
+
+    if (response.status === 404) return true;
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.error || "No se pudo limpiar un pago antiguo de Kelly.");
+    }
+    return true;
+  }
+
+  async function resetKellyTo2800(state) {
+    if (sharedMode || kellyResetInProgress) return;
+    if (localStorage.getItem(KELLY_RESET_DONE_KEY) === "1") return;
+
+    const app = APP();
+    if (typeof app?.cloudReady !== "undefined" && app.cloudReady !== true) return;
+
+    kellyResetInProgress = true;
+
+    try {
+      let pending = readJsonStorage(KELLY_RESET_PENDING_KEY, null);
+      if (!Array.isArray(pending)) pending = null;
+
+      if (!pending) {
+        pending = Array.isArray(state?.kelly?.payments)
+          ? state.kelly.payments.map(payment => ({
+              id: payment?.id,
+              receiptUrl: payment?.receiptUrl || payment?.receipt_url || ""
+            }))
+          : [];
+        writeJsonStorage(KELLY_RESET_PENDING_KEY, pending);
+      }
+
+      // No mostrar por ningún instante los pagos/comprobantes antiguos.
+      state.kelly = { original: 2800, payments: [] };
+      persistLocalState(state);
+
+      for (const payment of pending) {
+        if (!payment?.id && !payment?.receiptUrl) continue;
+        await deleteKellyPaymentForReset(payment);
+      }
+
+      localStorage.setItem(KELLY_RESET_DONE_KEY, "1");
+      localStorage.removeItem(KELLY_RESET_PENDING_KEY);
+
+      // El estado visible ya está limpio. Una recarga confirma el estado oficial de Neon.
+      setTimeout(() => window.location.reload(), 250);
+    } catch (error) {
+      console.warn("No se pudo terminar la limpieza de Kelly:", error);
+      // Aunque Neon tarde en responder, la vista sigue mostrando Kelly en S/2,800
+      // sin los comprobantes viejos. El siguiente inicio volverá a intentar la limpieza.
+    } finally {
+      kellyResetInProgress = false;
+    }
+  }
+
+  function detectPersistentPaymentAnimation(state) {
+    if (sharedMode || kellyResetInProgress) return;
+
+    const current = paymentAnimationSnapshot(state);
+    const previous = readJsonStorage(PAYMENT_ANIMATION_KEY, null);
+
+    if (previous) {
+      for (const junta of state?.juntas || []) {
+        const key = String(junta?.id || "");
+        const before = previous.juntas?.[key];
+        const currentCount = current.juntas?.[key]?.count || 0;
+        if (before && currentCount > Number(before.count || 0)) {
+          const last = junta.payments?.[junta.payments.length - 1];
+          if (last?.id != null) {
+            lastSaved = { type: "junta", parentId: junta.id, paymentId: last.id };
+            break;
+          }
+        }
+      }
+
+      const currentKellyCount = current.kelly.count;
+      if (currentKellyCount > Number(previous.kelly?.count || 0)) {
+        const last = state?.kelly?.payments?.[state.kelly.payments.length - 1];
+        if (last?.id != null) {
+          lastSaved = { type: "kelly", paymentId: last.id };
+        }
+      }
+    }
+
+    writeJsonStorage(PAYMENT_ANIMATION_KEY, current);
+  }
+
   function makeSectionHeader(icon, eyebrow, title, subtitle) {
     const header = document.createElement("div");
     header.className = "mj-section-head";
@@ -340,7 +462,7 @@
   }
 
   function makeKellyCard(state) {
-    const original = Number(state.kelly?.original || 0);
+    const original = Number(state.kelly?.original || 2800);
     const paid = (state.kelly?.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const balance = Math.max(0, original - paid);
     const pct = original > 0 ? Math.min(100, paid / original * 100) : 0;
@@ -432,15 +554,8 @@
   function hideLegacyKellyQuickAction() {
     const legacy = $(".kelly-action");
     if (!legacy) return;
-
-    // El botón original de Kelly sigue siendo el punto de entrada de app.js.
-    // No lo ocultamos con hidden=true porque algunas versiones de app.js
-    // usan ese mismo botón para abrir el formulario. Lo dejamos en el DOM,
-    // fuera de la vista y fuera del flujo de teclado.
-    legacy.hidden = false;
-    legacy.classList.add("mj-kelly-launcher");
+    legacy.hidden = true;
     legacy.setAttribute("aria-hidden", "true");
-    legacy.tabIndex = -1;
   }
 
   function ensureRefreshButton() {
@@ -574,7 +689,7 @@
       const paid = getJuntaPaid(junta);
       const goal = Number(junta.goal || 0);
 
-      if (isKnownTestJunta(junta) || (goal > 0 && paid >= goal)) {
+      if (goal > 0 && paid >= goal) {
         obsolete.push(junta);
       }
     }
@@ -618,6 +733,14 @@
     const grid = $("#juntasGrid");
     if (!state || !grid) return;
 
+    ensureKellyState(state);
+
+    // Primera y única limpieza: elimina del Neon los pagos/comprobantes antiguos de Kelly
+    // y deja la deuda nuevamente en S/2,800.
+    if (localStorage.getItem(KELLY_RESET_DONE_KEY) !== "1") {
+      void resetKellyTo2800(state);
+    }
+
     hideLegacyKellyQuickAction();
     ensureRefreshButton();
 
@@ -630,6 +753,7 @@
       gridObserver.disconnect();
     }
 
+    detectPersistentPaymentAnimation(state);
     detectNewRecord(state);
     archiveCompletedJuntas(state);
     void purgeObsoleteJuntasFromCloud(state);
@@ -639,7 +763,8 @@
       .filter(el => {
         const juntaId = el.dataset.juntaCard || "";
         const junta = (state.juntas || []).find(j => j.id === juntaId);
-        return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta);
+        if (!junta) return false;
+        return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta) && !isJuntaCompleted(junta);
       });
 
     structuring = true;
@@ -1095,6 +1220,7 @@
     document.documentElement.classList.add("mj-shared-mode");
     document.documentElement.classList.remove("mj-shared-mode-pending");
     sharedMode = true;
+    document.documentElement.dataset.sharedView = "true";
 
     const brandText = $(".brand strong");
     const brandSub = $("#savingPhrase") || $(".brand span");
@@ -1106,16 +1232,21 @@
     if (welcome) welcome.hidden = true;
 
     const actions = $(".quick-grid");
-    if (actions) actions.hidden = true;
+    if (actions) {
+      actions.hidden = true;
+      actions.remove();
+    }
 
     const lower = $(".lower-grid");
     if (lower) lower.hidden = true;
 
     const settings = $("#settingsBtn");
-    if (settings) settings.hidden = true;
+    if (settings) settings.remove();
 
     const topActions = $(".top-actions");
-    if (topActions) topActions.hidden = true;
+    if (topActions) topActions.remove();
+
+    document.documentElement.dataset.sharedView = "true";
   }
 
   async function initializeSharedMode(token) {
@@ -1272,23 +1403,7 @@
     if (kellyAdd && !sharedMode) {
       event.preventDefault();
       event.stopImmediatePropagation();
-
-      const launcher = $("#kellyBtn");
-      if (!launcher) {
-        toast("No se encontró el registro de Kelly.");
-        return;
-      }
-
-      // Abrimos el flujo ORIGINAL de app.js.
-      // Lo hacemos mediante un evento nativo sobre el botón original y
-      // no construimos otro formulario paralelo, para no duplicar la
-      // lógica de comprobantes, Neon y Blob.
-      launcher.hidden = false;
-      launcher.dispatchEvent(new MouseEvent("click", {
-        bubbles: true,
-        cancelable: true,
-        view: window
-      }));
+      $("#kellyBtn")?.click();
       return;
     }
 
@@ -1570,7 +1685,6 @@
 
   async function init() {
     injectDeleteStyles();
-    injectKellyLauncherStyles();
     addEvents();
 
     const token = getShareToken();
