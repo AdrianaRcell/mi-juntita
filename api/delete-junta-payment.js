@@ -14,70 +14,91 @@ export async function POST(request) {
     const url = new URL(request.url);
 
     if (origin && origin !== url.origin) {
-      return json({ ok: false, error: "Origen no permitido." }, 403);
+      return json({ ok:false, error:"Origen no permitido." },403);
     }
 
     const body = await request.json().catch(() => null);
-    const juntaId = String(body?.juntaId ?? "").trim();
+    const paymentId = body?.paymentId ?? "";
+    const juntaId = body?.juntaId ?? "";
+    const receiptUrl = String(body?.receiptUrl || "").trim();
 
-    if (!juntaId) {
-      return json({ ok: false, error: "Falta el ID de la Junta." }, 400);
+    let payment = null;
+
+    if (String(paymentId).trim() !== "") {
+      const byId = await sql`
+        SELECT id, junta_id, amount, receipt_url
+        FROM junta_payments
+        WHERE CAST(id AS TEXT) = ${String(paymentId)}
+        LIMIT 1
+      `;
+      if (byId.length) payment = byId[0];
     }
 
-    const junta = await sql`
-      SELECT id, name, goal
-      FROM juntas
-      WHERE CAST(id AS TEXT) = ${juntaId}
-      LIMIT 1
-    `;
-
-    if (!junta.length) {
-      return json({ ok: false, error: "No se encontró la Junta." }, 404);
+    if (!payment && receiptUrl) {
+      const byReceipt = await sql`
+        SELECT id, junta_id, amount, receipt_url
+        FROM junta_payments
+        WHERE receipt_url = ${receiptUrl}
+        LIMIT 1
+      `;
+      if (byReceipt.length) payment = byReceipt[0];
     }
 
-    const payments = await sql`
-      SELECT id, receipt_url
-      FROM junta_payments
-      WHERE CAST(junta_id AS TEXT) = ${juntaId}
-    `;
-
-    for (const payment of payments) {
-      const receiptUrl = String(payment?.receipt_url || "").trim();
-      if (!receiptUrl) continue;
-
-      try {
-        await del(receiptUrl);
-      } catch (blobError) {
-        console.warn("No se pudo eliminar un comprobante de la Junta:", blobError);
-      }
+    if (!payment) {
+      return json({
+        ok:false,
+        error:"No se encontró el aporte en Neon. Se intentó localizarlo por ID y por comprobante."
+      },404);
     }
 
-    await sql`
-      DELETE FROM junta_payments
-      WHERE CAST(junta_id AS TEXT) = ${juntaId}
-    `;
+    const foundById =
+      String(paymentId).trim() !== "" &&
+      String(payment.id) === String(paymentId);
+
+    if (
+      foundById &&
+      juntaId &&
+      String(payment.junta_id) !== String(juntaId)
+    ) {
+      return json({ ok:false, error:"El aporte no pertenece a esa Junta." },403);
+    }
+
+    const receiptToDelete = payment.receipt_url || receiptUrl || "";
+    const realPaymentId = payment.id;
 
     const deleted = await sql`
-      DELETE FROM juntas
-      WHERE CAST(id AS TEXT) = ${juntaId}
-      RETURNING id, name, goal
+      DELETE FROM junta_payments
+      WHERE id = ${realPaymentId}
+      RETURNING id, junta_id, amount, receipt_url
     `;
 
     if (!deleted.length) {
-      return json({ ok: false, error: "No se pudo eliminar la Junta." }, 500);
+      return json({ ok:false, error:"No se pudo eliminar el aporte de Neon." },500);
+    }
+
+    const deletedPayment = deleted[0];
+    let receiptDeleted = true;
+
+    if (receiptToDelete) {
+      try { await del(receiptToDelete); }
+      catch (blobError) {
+        receiptDeleted = false;
+        console.warn("El aporte fue eliminado de Neon, pero el comprobante no pudo eliminarse de Blob:", blobError);
+      }
     }
 
     return json({
-      ok: true,
-      deletedJuntaId: deleted[0].id,
-      deletedName: deleted[0].name || "Junta",
-      deletedGoal: Number(deleted[0].goal || 0)
+      ok:true,
+      deletedPaymentId:deletedPayment.id,
+      deletedAmount:Number(deletedPayment.amount || 0),
+      juntaId:deletedPayment.junta_id,
+      receiptDeleted
     });
-  } catch (error) {
-    console.error("Error eliminando Junta:", error);
+  } catch(error) {
+    console.error("Error eliminando aporte de Junta:",error);
     return json({
-      ok: false,
-      error: error instanceof Error ? error.message : "No se pudo eliminar la Junta."
-    }, 500);
+      ok:false,
+      error:error instanceof Error ? error.message : "No se pudo eliminar el aporte."
+    },500);
   }
 }
