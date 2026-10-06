@@ -39,6 +39,31 @@
     return goal > 0 && paid >= goal;
   }
 
+  const INITIAL_CLEANUP_KEY = "miJuntita.initialCleanup.v3";
+
+  function getCanonicalJuntaId(state) {
+    const exact = (state?.juntas || []).find(junta =>
+      junta?.id &&
+      String(junta.name || "").trim().toLowerCase() === "junta" &&
+      Number(junta.goal || 0) === 4000 &&
+      Number(junta.normal || 0) === 250
+    );
+
+    if (exact) return String(exact.id);
+
+    const fallback = (state?.juntas || []).find(junta =>
+      junta?.id &&
+      Number(junta.goal || 0) === 4000 &&
+      Number(junta.normal || 0) === 250
+    );
+
+    return fallback ? String(fallback.id) : "";
+  }
+
+  function isLegacyCleanupPending(state) {
+    return localStorage.getItem(INITIAL_CLEANUP_KEY) !== "1" && Boolean(getCanonicalJuntaId(state));
+  }
+
   function ensureKellyState(state) {
     if (!state) return;
     if (!state.kelly || typeof state.kelly !== "object") {
@@ -320,8 +345,7 @@
   }
 
   const PAYMENT_ANIMATION_KEY = "miJuntita.paymentAnimation.v2";
-  const KELLY_RESET_DONE_KEY = "miJuntita.kellyReset.done.v2";
-  const KELLY_RESET_PENDING_KEY = "miJuntita.kellyReset.pending.v2";
+  const KELLY_RESET_DONE_KEY = "miJuntita.kellyReset.done.v3";
 
   function paymentAnimationSnapshot(state) {
     return {
@@ -347,28 +371,6 @@
     }
   }
 
-  async function deleteKellyPaymentForReset(payment) {
-    const response = await fetch("/api/delete-kelly-payment", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify({
-        paymentId: payment?.id,
-        receiptUrl: payment?.receiptUrl || payment?.receipt_url || ""
-      })
-    });
-
-    if (response.status === 404) return true;
-
-    const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.ok) {
-      throw new Error(data?.error || "No se pudo limpiar un pago antiguo de Kelly.");
-    }
-    return true;
-  }
-
   async function resetKellyTo2800(state) {
     if (sharedMode || kellyResetInProgress) return;
     if (localStorage.getItem(KELLY_RESET_DONE_KEY) === "1") return;
@@ -378,38 +380,32 @@
 
     kellyResetInProgress = true;
 
+    // Primero limpiamos la vista local para que nunca se enseñen pagos
+    // antiguos mientras se realiza la limpieza oficial de Neon.
+    state.kelly = { original: 2800, payments: [] };
+    persistLocalState(state);
+
     try {
-      let pending = readJsonStorage(KELLY_RESET_PENDING_KEY, null);
-      if (!Array.isArray(pending)) pending = null;
+      const response = await fetch("/api/reset-kelly", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({ confirm: "RESET_KELLY_2800" })
+      });
 
-      if (!pending) {
-        pending = Array.isArray(state?.kelly?.payments)
-          ? state.kelly.payments.map(payment => ({
-              id: payment?.id,
-              receiptUrl: payment?.receiptUrl || payment?.receipt_url || ""
-            }))
-          : [];
-        writeJsonStorage(KELLY_RESET_PENDING_KEY, pending);
-      }
-
-      // No mostrar por ningún instante los pagos/comprobantes antiguos.
-      state.kelly = { original: 2800, payments: [] };
-      persistLocalState(state);
-
-      for (const payment of pending) {
-        if (!payment?.id && !payment?.receiptUrl) continue;
-        await deleteKellyPaymentForReset(payment);
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "No se pudo limpiar Kelly.");
       }
 
       localStorage.setItem(KELLY_RESET_DONE_KEY, "1");
-      localStorage.removeItem(KELLY_RESET_PENDING_KEY);
-
-      // El estado visible ya está limpio. Una recarga confirma el estado oficial de Neon.
       setTimeout(() => window.location.reload(), 250);
     } catch (error) {
-      console.warn("No se pudo terminar la limpieza de Kelly:", error);
-      // Aunque Neon tarde en responder, la vista sigue mostrando Kelly en S/2,800
-      // sin los comprobantes viejos. El siguiente inicio volverá a intentar la limpieza.
+      console.warn("No se pudo terminar la limpieza oficial de Kelly:", error);
+      // No marcamos la migración como terminada: se reintentará en el
+      // siguiente inicio hasta que Neon confirme la limpieza.
     } finally {
       kellyResetInProgress = false;
     }
@@ -645,7 +641,6 @@
   async function purgeObsoleteJuntasFromCloud(state) {
     if (sharedMode || !state?.juntas?.length) return;
 
-    const INITIAL_CLEANUP_KEY = "miJuntita.initialCleanup.v2";
     const initialCleanupDone = localStorage.getItem(INITIAL_CLEANUP_KEY) === "1";
 
     let obsolete = [];
@@ -715,14 +710,52 @@
       return;
     }
 
-    const results = await Promise.all(
-      unique.map(junta => deleteJuntaFromCloud(junta.id))
-    );
+    let cleaned = false;
 
-    if (results.every(Boolean)) {
-      clearCompletedJuntaArchive();
-      localStorage.setItem(INITIAL_CLEANUP_KEY, "1");
-      setTimeout(() => window.location.reload(), 250);
+    // La migración inicial V3 elimina todas las Juntas actuales excepto
+    // la Junta normal de S/4,000. Después de completar esta migración,
+    // las Juntas nuevas ya no son afectadas por esta regla.
+    if (!initialCleanupDone) {
+      const keepId = getCanonicalJuntaId(state);
+      const keep = (state.juntas || []).find(junta => String(junta?.id || "") === keepId);
+
+      if (keep) {
+        const response = await fetch("/api/cleanup-juntas", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({
+            confirm: "CLEANUP_LEGACY_JUNTAS_V3",
+            keepJuntaId: keep.id
+          })
+        });
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.error || "No se pudieron limpiar las Juntas antiguas.");
+        }
+
+        localStorage.setItem(INITIAL_CLEANUP_KEY, "1");
+        clearCompletedJuntaArchive();
+        cleaned = true;
+        setTimeout(() => window.location.reload(), 250);
+      }
+    }
+
+    // Las Juntas nuevas que lleguen a 100 % siguen eliminándose mediante
+    // el flujo normal, sin afectar otras Juntas activas.
+    if (!cleaned) {
+      const results = await Promise.all(
+        unique.map(junta => deleteJuntaFromCloud(junta.id))
+      );
+
+      if (results.every(Boolean)) {
+        clearCompletedJuntaArchive();
+        if (!initialCleanupDone) localStorage.setItem(INITIAL_CLEANUP_KEY, "1");
+        setTimeout(() => window.location.reload(), 250);
+      }
     }
   }
 
@@ -758,12 +791,16 @@
     archiveCompletedJuntas(state);
     void purgeObsoleteJuntasFromCloud(state);
 
+    const migrationPending = isLegacyCleanupPending(state);
+    const canonicalJuntaId = migrationPending ? getCanonicalJuntaId(state) : "";
+
     const juntaCards = Array.from(grid.children)
       .filter(el => el.classList.contains("card"))
       .filter(el => {
         const juntaId = el.dataset.juntaCard || "";
-        const junta = (state.juntas || []).find(j => j.id === juntaId);
+        const junta = (state.juntas || []).find(j => String(j.id) === String(juntaId));
         if (!junta) return false;
+        if (migrationPending && String(junta.id) !== canonicalJuntaId) return false;
         return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta) && !isJuntaCompleted(junta);
       });
 
@@ -1342,7 +1379,19 @@
     const state = getState();
     if (!state) return;
 
-    const juntaOptions = (state.juntas || []).map((j, index) => `
+    const visibleJuntaIds = new Set(
+      $$("#juntasGrid [data-junta-card]")
+        .map(card => String(card.dataset.juntaCard || ""))
+        .filter(Boolean)
+    );
+
+    const shareableJuntas = (state.juntas || []).filter(junta =>
+      junta?.id &&
+      visibleJuntaIds.has(String(junta.id)) &&
+      !isJuntaCompleted(junta)
+    );
+
+    const juntaOptions = shareableJuntas.map((j, index) => `
       <button class="mj-share-choice" type="button" data-mj-share-type="junta" data-mj-share-id="${esc(j.id)}">
         <span>🌸</span>
         <div>
@@ -1403,7 +1452,12 @@
     if (kellyAdd && !sharedMode) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      $("#kellyBtn")?.click();
+      const launcher = $("#kellyBtn");
+      if (launcher) {
+        launcher.click();
+      } else {
+        toast("No se pudo abrir el registro de Kelly.");
+      }
       return;
     }
 
