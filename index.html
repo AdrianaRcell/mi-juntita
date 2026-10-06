@@ -56,12 +56,6 @@
         <em>＋</em>
       </button>
 
-      <button class="action-card kelly-action" id="kellyBtn" type="button" hidden aria-hidden="true" tabindex="-1">
-        <span class="action-icon">💗</span>
-        <span><b>Registrar Kelly</b><small>Agregar un pago</small></span>
-        <em>＋</em>
-      </button>
-
       <button class="action-card gasto-action" id="gastoBtn" type="button">
         <span class="action-icon">🪙</span>
         <span><b>Agregar gasto</b><small>Sin comprobante</small></span>
@@ -88,21 +82,7 @@
   <script src="test-mode.js"></script>
   <script src="share-guard.js"></script>
 
-  <script>
-    (() => {
-      const params = new URLSearchParams(location.search);
-      const hash = location.hash.replace(/^#/, "");
-      const hashParams = new URLSearchParams(hash);
-      const shared = !!(params.get("share") || hashParams.get("share"));
-
-      window.MiJuntitaSharedMode = shared;
-
-      if (!shared) {
-        document.write('<script src="app.js"><\/script>');
-      }
-    })();
-  </script>
-
+  <script src="app.js"></script>
   <script src="enhancements.js"></script>
   <script src="reminders.js"></script>
 
