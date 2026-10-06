@@ -14,6 +14,7 @@
   let gridObserver = null;
   let currentDetailContext = null;
   let lastStarSignature = "";
+  let kellyResetInProgress = false;
 
   // ============================================================
   // JUNTAS COMPLETADAS
@@ -318,6 +319,134 @@
     lastSignature = signature;
   }
 
+  const PAYMENT_ANIMATION_KEY = "miJuntita.paymentAnimation.v2";
+  const KELLY_RESET_DONE_KEY = "miJuntita.kellyReset.done.v2";
+  const KELLY_RESET_PENDING_KEY = "miJuntita.kellyReset.pending.v2";
+
+  function paymentAnimationSnapshot(state) {
+    return {
+      juntas: (state?.juntas || []).reduce((acc, junta) => {
+        acc[String(junta?.id || "")] = {
+          count: Array.isArray(junta?.payments) ? junta.payments.length : 0,
+          lastId: String(junta?.payments?.[junta.payments.length - 1]?.id ?? "")
+        };
+        return acc;
+      }, {}),
+      kelly: {
+        count: Array.isArray(state?.kelly?.payments) ? state.kelly.payments.length : 0,
+        lastId: String(state?.kelly?.payments?.[state.kelly.payments.length - 1]?.id ?? "")
+      }
+    };
+  }
+
+  function persistLocalState(state) {
+    try {
+      localStorage.setItem("miJuntita.v2", JSON.stringify(state));
+    } catch (error) {
+      console.warn("No se pudo actualizar la copia local:", error);
+    }
+  }
+
+  async function deleteKellyPaymentForReset(payment) {
+    const response = await fetch("/api/delete-kelly-payment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        paymentId: payment?.id,
+        receiptUrl: payment?.receiptUrl || payment?.receipt_url || ""
+      })
+    });
+
+    if (response.status === 404) return true;
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.error || "No se pudo limpiar un pago antiguo de Kelly.");
+    }
+    return true;
+  }
+
+  async function resetKellyTo2800(state) {
+    if (sharedMode || kellyResetInProgress) return;
+    if (localStorage.getItem(KELLY_RESET_DONE_KEY) === "1") return;
+
+    const app = APP();
+    if (typeof app?.cloudReady !== "undefined" && app.cloudReady !== true) return;
+
+    kellyResetInProgress = true;
+
+    try {
+      let pending = readJsonStorage(KELLY_RESET_PENDING_KEY, null);
+      if (!Array.isArray(pending)) pending = null;
+
+      if (!pending) {
+        pending = Array.isArray(state?.kelly?.payments)
+          ? state.kelly.payments.map(payment => ({
+              id: payment?.id,
+              receiptUrl: payment?.receiptUrl || payment?.receipt_url || ""
+            }))
+          : [];
+        writeJsonStorage(KELLY_RESET_PENDING_KEY, pending);
+      }
+
+      // No mostrar por ningún instante los pagos/comprobantes antiguos.
+      state.kelly = { original: 2800, payments: [] };
+      persistLocalState(state);
+
+      for (const payment of pending) {
+        if (!payment?.id && !payment?.receiptUrl) continue;
+        await deleteKellyPaymentForReset(payment);
+      }
+
+      localStorage.setItem(KELLY_RESET_DONE_KEY, "1");
+      localStorage.removeItem(KELLY_RESET_PENDING_KEY);
+
+      // El estado visible ya está limpio. Una recarga confirma el estado oficial de Neon.
+      setTimeout(() => window.location.reload(), 250);
+    } catch (error) {
+      console.warn("No se pudo terminar la limpieza de Kelly:", error);
+      // Aunque Neon tarde en responder, la vista sigue mostrando Kelly en S/2,800
+      // sin los comprobantes viejos. El siguiente inicio volverá a intentar la limpieza.
+    } finally {
+      kellyResetInProgress = false;
+    }
+  }
+
+  function detectPersistentPaymentAnimation(state) {
+    if (sharedMode || kellyResetInProgress) return;
+
+    const current = paymentAnimationSnapshot(state);
+    const previous = readJsonStorage(PAYMENT_ANIMATION_KEY, null);
+
+    if (previous) {
+      for (const junta of state?.juntas || []) {
+        const key = String(junta?.id || "");
+        const before = previous.juntas?.[key];
+        const currentCount = current.juntas?.[key]?.count || 0;
+        if (before && currentCount > Number(before.count || 0)) {
+          const last = junta.payments?.[junta.payments.length - 1];
+          if (last?.id != null) {
+            lastSaved = { type: "junta", parentId: junta.id, paymentId: last.id };
+            break;
+          }
+        }
+      }
+
+      const currentKellyCount = current.kelly.count;
+      if (currentKellyCount > Number(previous.kelly?.count || 0)) {
+        const last = state?.kelly?.payments?.[state.kelly.payments.length - 1];
+        if (last?.id != null) {
+          lastSaved = { type: "kelly", paymentId: last.id };
+        }
+      }
+    }
+
+    writeJsonStorage(PAYMENT_ANIMATION_KEY, current);
+  }
+
   function makeSectionHeader(icon, eyebrow, title, subtitle) {
     const header = document.createElement("div");
     header.className = "mj-section-head";
@@ -605,6 +734,13 @@
     if (!state || !grid) return;
 
     ensureKellyState(state);
+
+    // Primera y única limpieza: elimina del Neon los pagos/comprobantes antiguos de Kelly
+    // y deja la deuda nuevamente en S/2,800.
+    if (localStorage.getItem(KELLY_RESET_DONE_KEY) !== "1") {
+      void resetKellyTo2800(state);
+    }
+
     hideLegacyKellyQuickAction();
     ensureRefreshButton();
 
@@ -617,6 +753,7 @@
       gridObserver.disconnect();
     }
 
+    detectPersistentPaymentAnimation(state);
     detectNewRecord(state);
     archiveCompletedJuntas(state);
     void purgeObsoleteJuntasFromCloud(state);
@@ -1083,6 +1220,7 @@
     document.documentElement.classList.add("mj-shared-mode");
     document.documentElement.classList.remove("mj-shared-mode-pending");
     sharedMode = true;
+    document.documentElement.dataset.sharedView = "true";
 
     const brandText = $(".brand strong");
     const brandSub = $("#savingPhrase") || $(".brand span");
@@ -1094,16 +1232,21 @@
     if (welcome) welcome.hidden = true;
 
     const actions = $(".quick-grid");
-    if (actions) actions.hidden = true;
+    if (actions) {
+      actions.hidden = true;
+      actions.remove();
+    }
 
     const lower = $(".lower-grid");
     if (lower) lower.hidden = true;
 
     const settings = $("#settingsBtn");
-    if (settings) settings.hidden = true;
+    if (settings) settings.remove();
 
     const topActions = $(".top-actions");
-    if (topActions) topActions.hidden = true;
+    if (topActions) topActions.remove();
+
+    document.documentElement.dataset.sharedView = "true";
   }
 
   async function initializeSharedMode(token) {
