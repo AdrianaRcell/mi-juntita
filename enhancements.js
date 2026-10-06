@@ -24,15 +24,32 @@
   const ARCHIVE_KEY = "miJuntita.completedJuntas.v1";
   const HIDDEN_COMPLETED_KEY = "miJuntita.hiddenCompletedJuntas.v1";
 
-  const TEST_JUNTA_NAMES = new Set([
-    "junta test",
-    "junta de prueba",
-    "junta prueba"
-  ]);
+  // Las Juntas de prueba antiguas se limpian una sola vez mediante la
+  // migración inicial (conservando la Junta real de S/4,000).
+  // Después de esa migración NO se usa el nombre de la Junta para borrarla,
+  // porque una Junta nueva puede tener cualquier nombre.
+  function isKnownTestJunta() {
+    return false;
+  }
 
-  function isKnownTestJunta(junta) {
-    const name = String(junta?.name || "").trim().toLowerCase();
-    return TEST_JUNTA_NAMES.has(name) || name.includes("test") || name.includes("prueba");
+  function isJuntaCompleted(junta) {
+    const goal = Number(junta?.goal || 0);
+    const paid = getJuntaPaid(junta);
+    return goal > 0 && paid >= goal;
+  }
+
+  function ensureKellyState(state) {
+    if (!state) return;
+    if (!state.kelly || typeof state.kelly !== "object") {
+      state.kelly = { original: 2800, payments: [] };
+      return;
+    }
+    if (!Number.isFinite(Number(state.kelly.original)) || Number(state.kelly.original) <= 0) {
+      state.kelly.original = 2800;
+    }
+    if (!Array.isArray(state.kelly.payments)) {
+      state.kelly.payments = [];
+    }
   }
 
   function clearCompletedJuntaArchive() {
@@ -45,17 +62,15 @@
   }
 
   // Cuando Kelly alcanza el 100 %, se retira de la interfaz.
-  // Conservamos sus pagos en Neon para no perder el historial.
+  // Sus pagos siguen conservándose en Neon.
   function isKellyCompleted(state) {
-    const original = Number(state?.kelly?.original || 0);
-    if (original <= 0) return false;
-
+    ensureKellyState(state);
+    const original = Number(state?.kelly?.original || 2800);
     const paid = (state?.kelly?.payments || []).reduce(
       (sum, payment) => sum + Number(payment?.amount || 0),
       0
     );
-
-    return paid >= original;
+    return original > 0 && paid >= original;
   }
 
   let archiveCleanupTimer = null;
@@ -318,7 +333,7 @@
   }
 
   function makeKellyCard(state) {
-    const original = Number(state.kelly?.original || 0);
+    const original = Number(state.kelly?.original || 2800);
     const paid = (state.kelly?.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const balance = Math.max(0, original - paid);
     const pct = original > 0 ? Math.min(100, paid / original * 100) : 0;
@@ -545,7 +560,7 @@
       const paid = getJuntaPaid(junta);
       const goal = Number(junta.goal || 0);
 
-      if (isKnownTestJunta(junta) || (goal > 0 && paid >= goal)) {
+      if (goal > 0 && paid >= goal) {
         obsolete.push(junta);
       }
     }
@@ -589,6 +604,7 @@
     const grid = $("#juntasGrid");
     if (!state || !grid) return;
 
+    ensureKellyState(state);
     hideLegacyKellyQuickAction();
     ensureRefreshButton();
 
@@ -610,7 +626,8 @@
       .filter(el => {
         const juntaId = el.dataset.juntaCard || "";
         const junta = (state.juntas || []).find(j => j.id === juntaId);
-        return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta);
+        if (!junta) return false;
+        return !isJuntaSuppressed(juntaId) && !isKnownTestJunta(junta) && !isJuntaCompleted(junta);
       });
 
     structuring = true;
