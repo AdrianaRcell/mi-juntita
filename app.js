@@ -4928,12 +4928,15 @@
 
   window.MiJuntita = {
 
-    state,
+  state,
 
-    save,
+  save,
 
-    render
-  };
+  render,
+
+  openKellyPayment
+
+};
 
 
   // ============================================================
